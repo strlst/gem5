@@ -46,7 +46,7 @@ class DRAMsim3(AbstractMemory):
 
     # A single port for now
     port = ResponsePort(
-        "port for receiving requests fromthe CPU or other requestor"
+        "port for receiving requests from the CPU or other requestor"
     )
 
     configFile = Param.String(

@@ -37,10 +37,6 @@ def config_ds3(mem_type: str, num_chnls: int) -> Tuple[str, str]:
     # TODO: We need a better solution to this. This hard-coding is not
     # an acceptable solution.
     dramsim_3_dir = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        os.pardir,
-        os.pardir,
-        os.pardir,
         "ext",
         "dramsim3",
         "DRAMsim3",
@@ -131,7 +127,7 @@ class SingleChannel(AbstractMemorySystem):
 
     @overrides(AbstractMemorySystem)
     def set_memory_range(self, ranges: List[AddrRange]) -> None:
-        if len(ranges != 1) or ranges[0].size != self._size:
+        if len(ranges) != 1 or ranges[0].size() != self._size:
             raise Exception(
                 "Single channel DRAMSim memory controller requires a single "
                 "range which matches the memory's size."
@@ -152,7 +148,7 @@ def SingleChannelDDR3_1600(
 
 def SingleChannelDDR4_2400(size: Optional[str] = "1024MiB") -> SingleChannel:
     """
-    A single channel DDR3_2400.
+    A single channel DDR4_2400.
 
     :param size: The size of the memory system. Default value of 1024MiB.
     """
