@@ -67,13 +67,15 @@ system.system_port = system.membus.cpu_side_ports
 
 # dramsim specific setup
 system.mem_ctrl = SingleChannelDDR4_2400()
-addr_range, port = system.mem_ctrl.get_mem_ports()[0]
+mem_ports = system.mem_ctrl.get_mem_ports()
+addr_range, port = mem_ports[0]
 system.membus.mem_side_ports = port
 system.mem_ranges[0] = addr_range
 
 # post-system setup section
 
-res = obtain_resource("riscv-matrix-multiply").get_local_path()
+# res = obtain_resource("riscv-matrix-multiply").get_local_path()
+res = "tests/test-progs/matmul/bin/riscv/linux/matmul"
 system.workload = SEWorkload.init_compatible(res)
 
 process = Process()
