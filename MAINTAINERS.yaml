@@ -281,3 +281,8 @@ website:
         - Bobby R. Bruce <bbruce@ucdavis.edu>
     experts:
         - Jason Lowe-Power <jason@lowepower.com>
+
+memsec:
+    desc: >-
+        New memory security extensions adding fixes and a memory security analysis and evaluation platform.
+    status: maintained
