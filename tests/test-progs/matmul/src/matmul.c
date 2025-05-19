@@ -6,7 +6,8 @@
 #define ARRAY_SIZE 256
 #define DIM_SIZE 16
 
-typedef int data_t;static data_t input1_data[ARRAY_SIZE] =
+typedef int data_t;
+static data_t input1_data[ARRAY_SIZE] =
 {
     0,   3,   2,   0,   3,   1,   0,   3,
     2,   3,   2,   0,   3,   3,   1,   2,

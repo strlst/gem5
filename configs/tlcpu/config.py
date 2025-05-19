@@ -5,10 +5,7 @@ from caches import *
 import m5
 from m5.objects import *
 
-from gem5.components.memory.dramsim_3 import (
-    DRAMSim3MemCtrl,
-    SingleChannelDDR4_2400,
-)
+from gem5.components.memory.dramsim_3 import DRAMSim3MemCtrl
 from gem5.resources.resource import obtain_resource
 
 parser = argparse.ArgumentParser(
@@ -59,18 +56,18 @@ system.cpu.dcache.connectBus(system.l2bus)
 
 system.l2cache = L2Cache(size=args.l2_size)
 system.l2cache.connectCPUSideBus(system.l2bus)
-system.l2cache.connectMemSideBus(system.membus)
+# system.l2cache.connectMemSideBus(system.membus)
 
 system.cpu.createInterruptController()
 
-system.system_port = system.membus.cpu_side_ports
-
 # dramsim specific setup
-system.mem_ctrl = SingleChannelDDR4_2400()
-mem_ports = system.mem_ctrl.get_mem_ports()
-addr_range, port = mem_ports[0]
-system.membus.mem_side_ports = port
-system.mem_ranges[0] = addr_range
+system.mem_ctrl = DRAMSim3MemCtrl(mem_name="DDR4_8Gb_x8_3200", num_chnls=1)
+system.mem_ctrl.port = system.membus.mem_side_ports
+system.mem_ranges = [system.mem_ctrl.range]
+system.comm_monitor = CommMonitor()
+# system.l2cache.connectMemSideBus(system.comm_monitor.cpu_side_port)
+system.comm_monitor.cpu_side_port = system.l2cache.mem_side
+system.comm_monitor.mem_side_port = system.membus.cpu_side_ports
 
 # post-system setup section
 
@@ -85,6 +82,7 @@ system.cpu.createThreads()
 
 root = Root(full_system=False, system=system)
 m5.instantiate()
-exit_event = m5.simulate()
 
+print(f"\nSimulation start")
+exit_event = m5.simulate()
 print(f"Exiting @ tick {m5.curTick()} because {exit_event.getCause()}")
