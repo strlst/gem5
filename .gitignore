@@ -36,3 +36,6 @@ configs/dram/lowp_sweep.cfg
 .vscode
 typings
 .DS_Store
+.cache
+.clang-format
+compile_commands.json

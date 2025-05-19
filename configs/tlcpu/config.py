@@ -11,8 +11,12 @@ from gem5.resources.resource import obtain_resource
 parser = argparse.ArgumentParser(
     description="A simple system for secure memory experiments."
 )
-# parser.add_argument("binary", default="tests/test-progs/hello/bin/riscv/linux/hello", nargs="?", type=str, help="Path to the binary to execute.")
-# parser.add_argument("binary", default=obtain_resource(resource_id="riscv-matrix-multiply"), nargs="?", type=str, help="Path to the binary to execute.")
+parser.add_argument(
+    "binary",
+    default="tests/test-progs/matmul/bin/riscv/linux/matmul",
+    nargs="?",
+    help="path to the binary to use as a bare-metal test",
+)
 parser.add_argument(
     "--l1i-size",
     default="16KiB",
@@ -71,12 +75,9 @@ system.comm_monitor.mem_side_port = system.membus.cpu_side_ports
 
 # post-system setup section
 
-# res = obtain_resource("riscv-matrix-multiply").get_local_path()
-res = "tests/test-progs/matmul/bin/riscv/linux/matmul"
-system.workload = SEWorkload.init_compatible(res)
-
+system.workload = SEWorkload.init_compatible(args.binary)
 process = Process()
-process.cmd = [res]
+process.cmd = [args.binary]
 system.cpu.workload = process
 system.cpu.createThreads()
 
