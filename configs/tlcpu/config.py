@@ -36,11 +36,11 @@ system.clk_domain = SrcClockDomain(
     voltage_domain=system.cpu_voltage_domain,
 )
 
-system.mem_mode = "atomic"
+system.mem_mode = "timing"
 system.mem_ranges = [AddrRange("8GiB")]
 
 # system.cpu = X86TimingSimpleCPU()
-system.cpu = RiscvAtomicSimpleCPU()
+system.cpu = RiscvTimingSimpleCPU()
 
 system.membus = SystemXBar()
 
