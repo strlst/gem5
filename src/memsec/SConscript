@@ -1,0 +1,7 @@
+Import('*')
+
+SimObject('CryptoCtrl.py', sim_objects=['CryptoCtrl'])
+
+Source('crypto_ctrl.cc')
+
+DebugFlag('CryptoCtrl', 'Intermediating unit for various crypto operations')
