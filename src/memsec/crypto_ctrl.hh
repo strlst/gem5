@@ -193,8 +193,7 @@ class CryptoCtrl : public SimObject
     void sendRangeChange();
 
     /// Instantiation of the CPU-side ports
-    CPUSidePort instPort;
-    CPUSidePort dataPort;
+    CPUSidePort cpuPort;
 
     /// Instantiation of the memory-side port
     MemSidePort memPort;

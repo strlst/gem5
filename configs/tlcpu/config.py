@@ -68,10 +68,11 @@ system.cpu.createInterruptController()
 system.mem_ctrl = DRAMSim3MemCtrl(mem_name="DDR4_8Gb_x8_3200", num_chnls=1)
 system.mem_ctrl.port = system.membus.mem_side_ports
 system.mem_ranges = [system.mem_ctrl.range]
-system.comm_monitor = CommMonitor()
-# system.l2cache.connectMemSideBus(system.comm_monitor.cpu_side_port)
-system.comm_monitor.cpu_side_port = system.l2cache.mem_side
-system.comm_monitor.mem_side_port = system.membus.cpu_side_ports
+
+# system.crypto_ctrl = CryptoCtrl(static_latency=5)
+# system.crypto_ctrl.cpu_side_port = system.l2cache.mem_side
+# system.crypto_ctrl.mem_side_port = system.membus.cpu_side_ports
+system.l2cache.mem_side = system.membus.cpu_side_ports
 
 # post-system setup section
 
