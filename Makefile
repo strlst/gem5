@@ -1,33 +1,38 @@
 OPTIONS:=
 GEM5:=build/RISCV/gem5.opt
-CONFIG:=configs/tlcpu/config.py --l1i-size=1KiB --l1d-size=1KiB --l2-size=2KiB
-DEBUG:=--debug-flags=DRAMsim3,CryptoCtrl
+GEM5_CONFIG:=configs/tlcpu/config.py --l1i-size=1KiB --l1d-size=1KiB --l2-size=2KiB
+DEBUG_FLAGS:=--debug-flags=DRAMsim3,CryptoCtrl
+REMOTE_HOSTNAME:=tlml003
+REMOTE_DIR:=~/gem5
 
 run:
-	$(GEM5) $(CONFIG)
-
-build: build-release
-
-build-release:
-	python3 $$(which scons) build/RISCV/gem5.opt -j$$(nproc)
-
-build-release-bear:
-	bear -- python3 $$(which scons) build/RISCV/gem5.opt -j$$(nproc)
-
-build-debug:
-	python3 $$(which scons) --linker=mold build/RISCV/gem5.opt -j$$(nproc)
-
-build-debug-bear:
-	bear -- python3 $$(which scons) --linker=mold build/RISCV/gem5.opt -j$$(nproc)
+	$(GEM5) $(GEM5_CONFIG)
 
 debug:
-	$(GEM5) $(DEBUG) $(CONFIG)
+	$(GEM5) $(DEBUG_FLAGS) $(GEM5_CONFIG)
 
-stream:
-	$(GEM5) $(CONFIG) --binary=
+build:
+	$(DEVELOP_PREFIX_CMD) python3 $$(which scons) $(DEVELOP_LINKER) build/RISCV/gem5.opt -j$$(nproc)
+
+build-dev:
+	bear -- python3 $$(which scons) --linker=mold build/RISCV/gem5.opt -j$$(nproc)
+
+remote-run:
+	ssh $(REMOTE_HOSTNAME) "cd $(REMOTE_DIR); $(GEM5) $(GEM5_CONFIG)"
+
+remote-debug:
+	ssh $(REMOTE_HOSTNAME) "cd $(REMOTE_DIR); $(GEM5) $(DEBUG_FLAGS) $(GEM5_CONFIG)"
+
+remote-build:
+	rsync -av --exclude=build,m5out --delete . $(REMOTE_HOSTNAME):$(REMOTE_DIR)/
+	ssh $(REMOTE_HOSTNAME) "cd $(REMOTE_DIR); make build"
+
+test-stream:
+# TODO: insert target for stream test
+	$(GEM5) $(GEM5_CONFIG) --binary=
 
 clean:
 	rm -rf m5out build
 
 
-.PHONY: build build-release build-debug build-release-bear build-debug-bear run debug stream clean
+.PHONY: build debug build build-dev remote-run remote-debug remote-build test-stream clean

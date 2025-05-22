@@ -131,15 +131,15 @@ bool CryptoCtrl::handleRequest(PacketPtr pkt) {
     DPRINTF(CryptoCtrl, "got request %s, blocked=%d\n", formattedPacket(pkt),
             blocked);
     if (blocked) {
-        // there is currently an outstanding request. stall.
+        // there is currently an outstanding request
         DPRINTF(CryptoCtrl, "stalling due to outstanding request\n");
         return false;
     }
 
-    // This memobj is now blocked waiting for the response to this packet.
-    blocked = true;
+    // this memobj is now blocked waiting for the response to this packet
+    //blocked = true;
 
-    // Simply forward to the memory port
+    // simply forward to the memory port
     memPort.sendPacket(pkt);
 
     return true;

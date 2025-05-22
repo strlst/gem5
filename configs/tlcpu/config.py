@@ -20,16 +20,17 @@ parser.add_argument(
 parser.add_argument(
     "--l1i-size",
     default="16KiB",
-    help="L1 instruction cache size. Default: 16KiB.",
+    help="L1 instruction cache size (default: 16KiB)",
 )
 parser.add_argument(
     "--l1d-size",
     default="16KiB",
-    help="L1 data cache size. Default: Default: 16KiB.",
+    help="L1 data cache size (default: 16KiB)",
 )
 parser.add_argument(
-    "--l2-size", default="512KiB", help="L2 cache size. Default: 256KiB."
+    "--l2-size", default="512KiB", help="L2 cache size (default: 256KiB)"
 )
+parser.add_argument("--no-memsec", action=argparse.BooleanOptionalAction)
 args = parser.parse_args()
 
 system = System()
@@ -69,10 +70,12 @@ system.mem_ctrl = DRAMSim3MemCtrl(mem_name="DDR4_8Gb_x8_3200", num_chnls=1)
 system.mem_ctrl.port = system.membus.mem_side_ports
 system.mem_ranges = [system.mem_ctrl.range]
 
-# system.crypto_ctrl = CryptoCtrl(static_latency=5)
-# system.crypto_ctrl.cpu_side_port = system.l2cache.mem_side
-# system.crypto_ctrl.mem_side_port = system.membus.cpu_side_ports
-system.l2cache.mem_side = system.membus.cpu_side_ports
+if args.no_memsec:
+    system.l2cache.mem_side = system.membus.cpu_side_ports
+else:
+    system.crypto_ctrl = CryptoCtrl(static_latency=5)
+    system.crypto_ctrl.cpu_side_port = system.l2cache.mem_side
+    system.crypto_ctrl.mem_side_port = system.membus.cpu_side_ports
 
 # post-system setup section
 
