@@ -1,12 +1,26 @@
 #ifndef __MEMSEC_CRYPTO_CTRL_HH__
 #define __MEMSEC_CRYPTO_CTRL_HH__
 
+#include <cstdint>
+
 #include "base/statistics.hh"
 #include "base/stats/group.hh"
 #include "mem/packet.hh"
 #include "mem/port.hh"
 #include "params/CryptoCtrl.hh"
 #include "sim/sim_object.hh"
+
+#define TICK_PER_CYCLE 1000
+
+// parameters sourced from https://ieeexplore.ieee.org/document/7019004
+// AES supports 128 bit blocks
+#define AES_BLOCK_BYTES (128 / 8)
+// cycle latencies
+#define AES_ENC_CYCLES 336
+#define AES_DEC_CYCLES 216
+// initiation intervals
+#define AES_ENC_II 336
+#define AES_DEC_II 216
 
 namespace gem5
 {
@@ -188,6 +202,13 @@ class CryptoCtrl : public SimObject
      * @return: pointer to created packet
      */
     PacketPtr createPktFromPkt(PacketPtr pkt, MemCmd cmd);
+
+    /**
+     * Introduce a delay on an operation.
+     */
+    void handleDelayedResponse();
+    EventFunctionWrapper delayResponse;
+    PacketPtr responsePkt;
 
     /// Instantiation of the CPU-side ports
     CPUSidePort cpuPort;

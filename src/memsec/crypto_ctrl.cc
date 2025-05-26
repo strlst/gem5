@@ -1,9 +1,10 @@
 #include "memsec/crypto_ctrl.hh"
 
-#include "base/stats/group.hh"
+#include <cstdint>
+
 #include "base/trace.hh"
 #include "debug/CryptoCtrl.hh"
-#include "mem/packet.hh"
+#include "sim/cur_tick.hh"
 
 namespace gem5
 {
@@ -16,13 +17,18 @@ formattedPacket(PacketPtr pkt)
     ss << "addr=" << unsigned(pkt->getAddr());
     ss << ", cmd=" << pkt->cmdString();
     ss << ", id=" << unsigned(pkt->requestorId());
+    ss << ", size=" << unsigned(pkt->getSize());
     ss << ")";
     return ss.str();
 }
 
 CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
     : SimObject(params), stats(this),
-      cpuPort(params.name + ".cpu_side_port", this),
+      delayResponse(
+          [this] {
+              handleDelayedResponse();
+          }, name()),
+      responsePkt(nullptr), cpuPort(params.name + ".cpu_side_port", this),
       memPort(params.name + ".mem_side_port", this)
 {
     DPRINTF(CryptoCtrl, "crypto controller constructor\n");
@@ -88,7 +94,6 @@ CryptoCtrl::CPUSidePort::recvRespRetry()
 void
 CryptoCtrl::MemSidePort::sendPacket(PacketPtr pkt)
 {
-    DPRINTF(CryptoCtrl, "send %s\n", formattedPacket(pkt));
     owner->stats.memTotalCountSend++;
 
     // make sure we cannot miss packets
@@ -134,10 +139,23 @@ bool
 CryptoCtrl::handleRequest(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "handle request %s\n", formattedPacket(pkt));
-    if (pkt->isRead())
+    if (pkt->isRead()) {
         stats.reads++;
-    else
+    } else {
         stats.writes++;
+        /*
+        // assume multiples of 64 bytes
+        const uint64_t mask = 0xFFFFFFFFFFFFFFFF;
+        if (pkt->hasData()) {
+            DPRINTF(CryptoCtrl, "XORing write data at %d\n", pkt->getAddr());
+            uint64_t* data = pkt->getPtr<uint64_t>();
+            for (int i = 0; i < pkt->getSize() / 8; i++) {
+                *data = (*data) ^ mask;
+                data++;
+            }
+        }
+        */
+    }
 
     // simply forward to the memory port
     memPort.sendPacket(pkt);
@@ -149,17 +167,51 @@ bool
 CryptoCtrl::handleResponse(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "handle response %s\n", formattedPacket(pkt));
+    assert(responsePkt == nullptr);
 
-    // The packet is now done. We're about to put it in the port, no need for
-    // this object to continue to stall.
-    // We need to free the resource before sending the packet in case the CPU
-    // tries to send another request immediately (e.g., in the same callchain).
+    /*
+    // print data
+    uint8_t* byte = pkt->getPtr<uint8_t>();
+    for (int i = 0; i < pkt->getSize(); i++) {
+        printf("%.02x", *(byte++));
+    }
+    printf("\n");
+    */
+    /*
+    // assume multiples of 64 bytes
+    const uint64_t mask = 0xFFFFFFFFFFFFFFFF;
+    if (pkt->hasRespData()) {
+        DPRINTF(CryptoCtrl, "XORing read data at %d %d %d\n", pkt->getAddr(),
+            pkt->hasData(), pkt->hasRespData());
+        uint64_t* data = pkt->getPtr<uint64_t>();
+        for (int i = 0; i < pkt->getSize() / 8; i++) {
+            *data = (*data) ^ mask;
+            data++;
+        }
+    }
+    */
 
-    // Simply forward to the memory port
-    cpuPort.sendPacket(pkt);
+    int iterations = pkt->getSize() / AES_BLOCK_BYTES;
+    // every II we schedule an iteration, considering ramp-up and ramp-down
+    Tick delay = iterations * AES_DEC_II + (AES_DEC_CYCLES - AES_DEC_II);
+
+    responsePkt = pkt;
+    schedule(delayResponse, curTick() + delay);
 
     return true;
 }
+
+void
+CryptoCtrl::handleDelayedResponse()
+{
+    DPRINTF(CryptoCtrl, "handling delayed response %s\n",
+        formattedPacket(responsePkt));
+    assert(responsePkt != nullptr);
+
+    cpuPort.sendPacket(responsePkt);
+    responsePkt = nullptr;
+}
+
 
 void
 CryptoCtrl::handleFunctional(PacketPtr pkt)
