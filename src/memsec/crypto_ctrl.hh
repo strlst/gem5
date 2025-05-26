@@ -1,6 +1,8 @@
 #ifndef __MEMSEC_CRYPTO_CTRL_HH__
 #define __MEMSEC_CRYPTO_CTRL_HH__
 
+#include "base/statistics.hh"
+#include "base/stats/group.hh"
 #include "mem/packet.hh"
 #include "mem/port.hh"
 #include "params/CryptoCtrl.hh"
@@ -15,6 +17,38 @@ namespace gem5
 class CryptoCtrl : public SimObject
 {
   private:
+    struct PktStats : public Group
+    {
+        statistics::Scalar reads;
+        statistics::Scalar writes;
+        statistics::Scalar cpuTotalCountSend;
+        statistics::Scalar cpuTotalCountRecv;
+        statistics::Scalar memTotalCountSend;
+        statistics::Scalar memTotalCountRecv;
+        statistics::Scalar memFailuresCountSend;
+        statistics::Scalar memRetryCountSend;
+        PktStats(Group* parent)
+            : Group(parent),
+              ADD_STAT(reads, statistics::units::Count::get(),
+                  "amount of read requests"),
+              ADD_STAT(writes, statistics::units::Count::get(),
+                  "amount of write requests"),
+              ADD_STAT(cpuTotalCountSend, statistics::units::Count::get(),
+                  "amount of sent packets"),
+              ADD_STAT(cpuTotalCountRecv, statistics::units::Count::get(),
+                  "amount of received packets"),
+              ADD_STAT(memTotalCountSend, statistics::units::Count::get(),
+                  "amount of sent packets"),
+              ADD_STAT(memTotalCountRecv, statistics::units::Count::get(),
+                  "amount of received packets"),
+              ADD_STAT(memFailuresCountSend, statistics::units::Count::get(),
+                  "amount of packets which failed to sent"),
+              ADD_STAT(memRetryCountSend, statistics::units::Count::get(),
+                  "amount of packets sent as a result of a retry")
+        {
+        }
+    } stats;
+
     class CPUSidePort : public ResponsePort
     {
       private:

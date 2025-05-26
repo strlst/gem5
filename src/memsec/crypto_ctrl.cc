@@ -1,5 +1,6 @@
 #include "memsec/crypto_ctrl.hh"
 
+#include "base/stats/group.hh"
 #include "base/trace.hh"
 #include "debug/CryptoCtrl.hh"
 #include "mem/packet.hh"
@@ -20,7 +21,8 @@ formattedPacket(PacketPtr pkt)
 }
 
 CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
-    : SimObject(params), cpuPort(params.name + ".cpu_side_port", this),
+    : SimObject(params), stats(this),
+      cpuPort(params.name + ".cpu_side_port", this),
       memPort(params.name + ".mem_side_port", this)
 {
     DPRINTF(CryptoCtrl, "crypto controller constructor\n");
@@ -52,6 +54,7 @@ void
 CryptoCtrl::CPUSidePort::sendPacket(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "send %s\n", formattedPacket(pkt));
+    ++owner->stats.cpuTotalCountSend;
 
     // panic if we cannot send packet
     panic_if(!sendTimingResp(pkt), "cannot send packet!");
@@ -68,6 +71,7 @@ bool
 CryptoCtrl::CPUSidePort::recvTimingReq(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "received timing request %s\n", formattedPacket(pkt));
+    owner->stats.cpuTotalCountRecv++;
 
     // just forward
     owner->handleRequest(pkt);
@@ -84,12 +88,15 @@ CryptoCtrl::CPUSidePort::recvRespRetry()
 void
 CryptoCtrl::MemSidePort::sendPacket(PacketPtr pkt)
 {
-    // make sure we cannot miss packets
-    // assert(failedPkt == nullptr);
+    DPRINTF(CryptoCtrl, "send %s\n", formattedPacket(pkt));
+    owner->stats.memTotalCountSend++;
 
+    // make sure we cannot miss packets
     bool success = sendTimingReq(pkt);
-    if (!success)
+    if (!success) {
         failedPkt = pkt;
+        ++owner->stats.memFailuresCountSend;
+    }
     DPRINTF(CryptoCtrl, "sent %s, success=%d\n", formattedPacket(pkt),
         success);
 }
@@ -97,8 +104,10 @@ CryptoCtrl::MemSidePort::sendPacket(PacketPtr pkt)
 bool
 CryptoCtrl::MemSidePort::recvTimingResp(PacketPtr pkt)
 {
-    // just forward
     DPRINTF(CryptoCtrl, "timing response %s\n", formattedPacket(pkt));
+    owner->stats.memTotalCountRecv++;
+
+    // just forward
     return owner->handleResponse(pkt);
 }
 
@@ -108,6 +117,8 @@ CryptoCtrl::MemSidePort::recvReqRetry()
     // just forward
     DPRINTF(CryptoCtrl, "(retry) timing request %s\n",
         formattedPacket(failedPkt));
+    owner->stats.memRetryCountSend++;
+
     bool success = owner->handleRequest(failedPkt);
     panic_if(!success, "(retry) timing request is not allowed to fail!");
     failedPkt = nullptr;
@@ -123,6 +134,10 @@ bool
 CryptoCtrl::handleRequest(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "handle request %s\n", formattedPacket(pkt));
+    if (pkt->isRead())
+        stats.reads++;
+    else
+        stats.writes++;
 
     // simply forward to the memory port
     memPort.sendPacket(pkt);
