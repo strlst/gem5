@@ -1,6 +1,7 @@
 #ifndef __MEMSEC_CRYPTO_CTRL_HH__
 #define __MEMSEC_CRYPTO_CTRL_HH__
 
+#include "mem/packet.hh"
 #include "mem/port.hh"
 #include "params/CryptoCtrl.hh"
 #include "sim/sim_object.hh"
@@ -9,71 +10,30 @@ namespace gem5
 {
 
 /**
- * A very simple memory object. Current implementation doesn't even cache
- * anything it just forwards requests and responses.
- * This memobj is fully blocking (not non-blocking). Only a single request can
- * be outstanding at a time.
+ * A very simple controller.
  */
 class CryptoCtrl : public SimObject
 {
   private:
-
-    /**
-     * Port on the CPU-side that receives requests.
-     * Mostly just forwards requests to the owner.
-     * Part of a vector of ports. One for each CPU port (e.g., data, inst)
-     */
     class CPUSidePort : public ResponsePort
     {
       private:
-        /// The object that owns this object (CryptoCtrl)
-        CryptoCtrl *owner;
-
-        /// True if the port needs to send a retry req.
-        bool needRetry;
-
-        /// If we tried to send a packet and it was blocked, store it here
-        PacketPtr blockedPacket;
+        CryptoCtrl* owner;
 
       public:
-        /**
-         * Constructor. Just calls the superclass constructor.
-         */
-        CPUSidePort(const std::string& name, CryptoCtrl *owner) :
-            ResponsePort(name), owner(owner), needRetry(false),
-            blockedPacket(nullptr)
-        { }
+        CPUSidePort(const std::string& name, CryptoCtrl* owner)
+            : ResponsePort(name), owner(owner)
+        {
+        }
 
-        /**
-         * Send a packet across this port. This is called by the owner and
-         * all of the flow control is hanled in this function.
-         *
-         * @param packet to send.
-         */
         void sendPacket(PacketPtr pkt);
-
-        /**
-         * Get a list of the non-overlapping address ranges the owner is
-         * responsible for. All response ports must override this function
-         * and return a populated list with at least one item.
-         *
-         * @return a list of ranges responded to
-         */
         AddrRangeList getAddrRanges() const override;
 
-        /**
-         * Send a retry to the peer port only if it is needed. This is called
-         * from the CryptoCtrl whenever it is unblocked.
-         */
-        void trySendRetry();
-
       protected:
-        /**
-         * Receive an atomic request packet from the request port.
-         * No need to implement in this simple memobj.
-         */
         Tick recvAtomic(PacketPtr pkt) override
-        { panic("recvAtomic unimpl."); }
+        {
+            panic("recvAtomic unimpl.");
+        }
 
         /**
          * Receive a functional request packet from the request port.
@@ -101,33 +61,21 @@ class CryptoCtrl : public SimObject
         void recvRespRetry() override;
     };
 
-    /**
-     * Port on the memory-side that receives responses.
-     * Mostly just forwards requests to the owner
-     */
     class MemSidePort : public RequestPort
     {
       private:
         /// The object that owns this object (CryptoCtrl)
-        CryptoCtrl *owner;
+        CryptoCtrl* owner;
 
-        /// If we tried to send a packet and it was blocked, store it here
-        PacketPtr blockedPacket;
+        // store packet for retries
+        PacketPtr failedPkt;
 
       public:
-        /**
-         * Constructor. Just calls the superclass constructor.
-         */
-        MemSidePort(const std::string& name, CryptoCtrl *owner) :
-            RequestPort(name), owner(owner), blockedPacket(nullptr)
-        { }
+        MemSidePort(const std::string& name, CryptoCtrl* owner)
+            : RequestPort(name), owner(owner), failedPkt(nullptr)
+        {
+        }
 
-        /**
-         * Send a packet across this port. This is called by the owner and
-         * all of the flow control is hanled in this function.
-         *
-         * @param packet to send.
-         */
         void sendPacket(PacketPtr pkt);
 
       protected:
@@ -192,20 +140,31 @@ class CryptoCtrl : public SimObject
      */
     void sendRangeChange();
 
+    /**
+     * Creates an entirely new packet.
+     *
+     * @return: pointer to created packet
+     */
+    PacketPtr createPkt(Addr addr, size_t size, uint32_t flags,
+        uint16_t requestorId, MemCmd cmd);
+
+    /**
+     * Copy existing an existing packet to create a new packet.
+     *
+     * @return: pointer to created packet
+     */
+    PacketPtr createPktFromPkt(PacketPtr pkt, MemCmd cmd);
+
     /// Instantiation of the CPU-side ports
     CPUSidePort cpuPort;
 
     /// Instantiation of the memory-side port
     MemSidePort memPort;
 
-    /// True if this is currently blocked waiting for a response.
-    bool blocked;
-
   public:
-
     /** constructor
      */
-    CryptoCtrl(const CryptoCtrlParams &params);
+    CryptoCtrl(const CryptoCtrlParams& params);
 
     /**
      * Get a port with a given name and index. This is used at
@@ -217,10 +176,10 @@ class CryptoCtrl : public SimObject
      *
      * @return A reference to the given port
      */
-    Port &getPort(const std::string &if_name,
-                  PortID idx=InvalidPortID) override;
+    Port&
+    getPort(const std::string& if_name, PortID idx = InvalidPortID) override;
 };
 
 } // namespace gem5
 
-#endif // __LEARNING_GEM5_PART2_SIMPLE_MEMOBJ_HH__
+#endif // __MEMSEC_CRYPTO_CTRL_HH__

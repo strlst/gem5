@@ -335,6 +335,8 @@ void DRAMsim3::writeComplete(unsigned id, uint64_t addr)
 
     if (nbrOutstanding() == 0)
         signalDrainDone();
+
+    DPRINTF(DRAMsim3, "Fully drained\n");
 }
 
 Port&
