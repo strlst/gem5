@@ -7,7 +7,18 @@ class CryptoCtrl(SimObject):
     cxx_header = "memsec/crypto_ctrl.hh"
     cxx_class = "gem5::CryptoCtrl"
 
-    static_latency = Param.Cycles("constant cycle delay of crypto unit")
+    aes_enc_cycles = Param.Cycles(
+        336, "AES-CTR encryption operation cycle delay per block"
+    )
+    aes_dec_cycles = Param.Cycles(
+        216, "AES-CTR decryption operation cycle delay per block"
+    )
+    aes_enc_ii = Param.Cycles(
+        336, "AES-CTR encryption operation initiation interval per block"
+    )
+    aes_dec_ii = Param.Cycles(
+        216, "AES-CTR decryption operation initiation interval per block"
+    )
 
     cpu_side_port = ResponsePort("CPU side port")
     mem_side_port = RequestPort("memory side port")

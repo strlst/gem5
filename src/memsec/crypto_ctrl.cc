@@ -23,7 +23,10 @@ formattedPacket(PacketPtr pkt)
 }
 
 CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
-    : SimObject(params), stats(this),
+    : SimObject(params), aes_enc_cycles(params.aes_enc_cycles),
+      aes_dec_cycles(params.aes_dec_cycles),
+      aes_enc_ii(params.aes_enc_ii), aes_dec_ii(params.aes_dec_ii),
+      stats(this),
       delayResponse(
           [this] {
               handleDelayedResponse();
@@ -31,7 +34,12 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
       responsePkt(nullptr), cpuPort(params.name + ".cpu_side_port", this),
       memPort(params.name + ".mem_side_port", this)
 {
-    DPRINTF(CryptoCtrl, "crypto controller constructor\n");
+    DPRINTF(CryptoCtrl,
+        "Created crypto controller with properties\n"
+        "\t\t\t%d aes encryption cycles (%d ii)\n"
+        "\t\t\t%d aes decryption cycles (%d ii)\n",
+        params.aes_enc_cycles, params.aes_enc_ii, params.aes_dec_cycles,
+        params.aes_dec_ii);
 }
 
 Port&

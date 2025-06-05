@@ -31,6 +31,9 @@ namespace gem5
 class CryptoCtrl : public SimObject
 {
   private:
+    uint32_t aes_enc_cycles, aes_dec_cycles;
+    uint32_t aes_enc_ii, aes_dec_ii;
+
     struct PktStats : public Group
     {
         statistics::Scalar reads;
