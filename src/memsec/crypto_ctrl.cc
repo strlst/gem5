@@ -1,10 +1,15 @@
 #include "memsec/crypto_ctrl.hh"
 
 #include <cstdint>
+#include <queue>
+#include <utility>
 
+#include "base/stats/units.hh"
 #include "base/trace.hh"
 #include "debug/CryptoCtrl.hh"
+#include "mem/packet.hh"
 #include "sim/cur_tick.hh"
+#include "sim/eventq.hh"
 
 namespace gem5
 {
@@ -24,14 +29,17 @@ formattedPacket(PacketPtr pkt)
 
 CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
     : SimObject(params), aes_enc_cycles(params.aes_enc_cycles),
-      aes_dec_cycles(params.aes_dec_cycles),
-      aes_enc_ii(params.aes_enc_ii), aes_dec_ii(params.aes_dec_ii),
-      stats(this),
+      aes_dec_cycles(params.aes_dec_cycles), aes_enc_ii(params.aes_enc_ii),
+      aes_dec_ii(params.aes_dec_ii), stats(this),
       delayResponse(
           [this] {
               handleDelayedResponse();
           }, name()),
-      responsePkt(nullptr), cpuPort(params.name + ".cpu_side_port", this),
+      delayRequest(
+          [this] {
+              handleDelayedRequest();
+          }, name()),
+      cpuPort(params.name + ".cpu_side_port", this),
       memPort(params.name + ".mem_side_port", this)
 {
     DPRINTF(CryptoCtrl,
@@ -40,6 +48,12 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
         "\t\t\t%d aes decryption cycles (%d ii)\n",
         params.aes_enc_cycles, params.aes_enc_ii, params.aes_dec_cycles,
         params.aes_dec_ii);
+}
+
+unsigned int
+CryptoCtrl::numberOutstandingResponses() const
+{
+    return queueResponse.size();
 }
 
 Port&
@@ -71,7 +85,13 @@ CryptoCtrl::CPUSidePort::sendPacket(PacketPtr pkt)
     ++owner->stats.cpuTotalCountSend;
 
     // panic if we cannot send packet
-    panic_if(!sendTimingResp(pkt), "cannot send packet!");
+    bool success = sendTimingResp(pkt);
+    if (!success) {
+        failedPackets.push(pkt);
+        ++owner->stats.cpuFailuresCountSend;
+    }
+    DPRINTF(CryptoCtrl, "sent %s, success=%d\n", formattedPacket(pkt),
+        success);
 }
 
 void
@@ -96,7 +116,15 @@ CryptoCtrl::CPUSidePort::recvTimingReq(PacketPtr pkt)
 void
 CryptoCtrl::CPUSidePort::recvRespRetry()
 {
-    panic("this function should never be called!");
+    auto failedPkt = failedPackets.front();
+    failedPackets.pop();
+    // just forward
+    DPRINTF(CryptoCtrl, "(retry) timing request %s\n",
+        formattedPacket(failedPkt));
+    owner->stats.cpuRetryCountSend++;
+
+    bool success = owner->handleResponse(failedPkt);
+    panic_if(!success, "(retry) timing request is not allowed to fail!");
 }
 
 void
@@ -107,7 +135,7 @@ CryptoCtrl::MemSidePort::sendPacket(PacketPtr pkt)
     // make sure we cannot miss packets
     bool success = sendTimingReq(pkt);
     if (!success) {
-        failedPkt = pkt;
+        failedPackets.push(pkt);
         ++owner->stats.memFailuresCountSend;
     }
     DPRINTF(CryptoCtrl, "sent %s, success=%d\n", formattedPacket(pkt),
@@ -127,6 +155,8 @@ CryptoCtrl::MemSidePort::recvTimingResp(PacketPtr pkt)
 void
 CryptoCtrl::MemSidePort::recvReqRetry()
 {
+    auto failedPkt = failedPackets.front();
+    failedPackets.pop();
     // just forward
     DPRINTF(CryptoCtrl, "(retry) timing request %s\n",
         formattedPacket(failedPkt));
@@ -134,7 +164,6 @@ CryptoCtrl::MemSidePort::recvReqRetry()
 
     bool success = owner->handleRequest(failedPkt);
     panic_if(!success, "(retry) timing request is not allowed to fail!");
-    failedPkt = nullptr;
 }
 
 void
@@ -147,6 +176,8 @@ bool
 CryptoCtrl::handleRequest(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "handle request %s\n", formattedPacket(pkt));
+    // short circuit requests which are actually responses on the bus
+
     if (pkt->isRead()) {
         stats.reads++;
     } else {
@@ -165,8 +196,17 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         */
     }
 
-    // simply forward to the memory port
-    memPort.sendPacket(pkt);
+    int iterations = pkt->getSize() / AES_BLOCK_BYTES;
+    // every II we schedule an iteration, considering ramp-up and ramp-down
+    Tick delay = iterations * aes_enc_ii + (aes_enc_cycles - aes_enc_ii);
+
+    // push new event onto priority queue
+    queueRequest.push(std::make_pair(curTick() + delay, pkt));
+    auto next = queueRequest.top();
+    if (delayRequest.scheduled())
+        reschedule(delayRequest, next.first);
+    else
+        schedule(delayRequest, next.first);
 
     return true;
 }
@@ -175,7 +215,6 @@ bool
 CryptoCtrl::handleResponse(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "handle response %s\n", formattedPacket(pkt));
-    assert(responsePkt == nullptr);
 
     /*
     // print data
@@ -201,25 +240,61 @@ CryptoCtrl::handleResponse(PacketPtr pkt)
 
     int iterations = pkt->getSize() / AES_BLOCK_BYTES;
     // every II we schedule an iteration, considering ramp-up and ramp-down
-    Tick delay = iterations * AES_DEC_II + (AES_DEC_CYCLES - AES_DEC_II);
+    Tick delay = iterations * aes_dec_ii + (aes_dec_cycles - aes_dec_ii);
 
-    responsePkt = pkt;
-    schedule(delayResponse, curTick() + delay);
+    // push new event onto priority queue
+    queueResponse.push(std::make_pair(curTick() + delay, pkt));
+    auto next = queueResponse.top();
+    if (delayResponse.scheduled())
+        reschedule(delayResponse, next.first);
+    else
+        schedule(delayResponse, next.first);
 
     return true;
 }
 
 void
-CryptoCtrl::handleDelayedResponse()
+CryptoCtrl::handleDelayedRequest()
 {
-    DPRINTF(CryptoCtrl, "handling delayed response %s\n",
-        formattedPacket(responsePkt));
-    assert(responsePkt != nullptr);
+    // pop request from queue
+    auto request = queueRequest.top();
+    // top element should be the earliest event
+    // that is to say, the current tick
+    assert(request.first == curTick());
+    queueRequest.pop();
 
-    cpuPort.sendPacket(responsePkt);
-    responsePkt = nullptr;
+    // reschedule event for remaining request packets
+    if (!queueRequest.empty()) {
+        schedule(delayRequest, queueRequest.top().first);
+    }
+
+    // process packet
+    PacketPtr pkt = request.second;
+    DPRINTF(CryptoCtrl, "handling delayed request %s\n", formattedPacket(pkt));
+    memPort.sendPacket(pkt);
 }
 
+void
+CryptoCtrl::handleDelayedResponse()
+{
+    // pop request from queue
+    auto response = queueResponse.top();
+    // top element should be the earliest event
+    // that is to say, the current tick
+    assert(response.first == curTick());
+    queueResponse.pop();
+
+    // reschedule event for remaining response packets
+    if (!queueResponse.empty()) {
+        schedule(delayResponse, queueResponse.top().first);
+    }
+
+    // process packet
+    PacketPtr pkt = response.second;
+    DPRINTF(CryptoCtrl, "handling delayed response %s\n",
+        formattedPacket(pkt));
+    cpuPort.sendPacket(pkt);
+}
 
 void
 CryptoCtrl::handleFunctional(PacketPtr pkt)

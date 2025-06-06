@@ -2,6 +2,8 @@
 #define __MEMSEC_CRYPTO_CTRL_HH__
 
 #include <cstdint>
+#include <functional>
+#include <queue>
 
 #include "base/statistics.hh"
 #include "base/stats/group.hh"
@@ -11,19 +13,24 @@
 #include "sim/sim_object.hh"
 
 #define TICK_PER_CYCLE 1000
+#define AFTER_1_CYCLE(t) ((t) + TICK_PER_CYCLE)
+#define AFTER_N_CYCLES(t, n) ((t) + ((n) * TICK_PER_CYCLE))
 
 // parameters sourced from https://ieeexplore.ieee.org/document/7019004
 // AES supports 128 bit blocks
 #define AES_BLOCK_BYTES (128 / 8)
 // cycle latencies
-#define AES_ENC_CYCLES 336
-#define AES_DEC_CYCLES 216
+//#define AES_ENC_CYCLES 336
+//#define AES_DEC_CYCLES 216
 // initiation intervals
-#define AES_ENC_II 336
-#define AES_DEC_II 216
+//#define AES_ENC_II 336
+//#define AES_DEC_II 216
+
 
 namespace gem5
 {
+
+typedef std::pair<Tick, PacketPtr> DelayedPacket;
 
 /**
  * A very simple controller.
@@ -42,6 +49,8 @@ class CryptoCtrl : public SimObject
         statistics::Scalar cpuTotalCountRecv;
         statistics::Scalar memTotalCountSend;
         statistics::Scalar memTotalCountRecv;
+        statistics::Scalar cpuFailuresCountSend;
+        statistics::Scalar cpuRetryCountSend;
         statistics::Scalar memFailuresCountSend;
         statistics::Scalar memRetryCountSend;
         PktStats(Group* parent)
@@ -58,10 +67,14 @@ class CryptoCtrl : public SimObject
                   "amount of sent packets"),
               ADD_STAT(memTotalCountRecv, statistics::units::Count::get(),
                   "amount of received packets"),
+              ADD_STAT(cpuFailuresCountSend, statistics::units::Count::get(),
+                  "amount of response packets which failed to sent"),
+              ADD_STAT(cpuRetryCountSend, statistics::units::Count::get(),
+                  "amount of response packets sent as a result of a retry"),
               ADD_STAT(memFailuresCountSend, statistics::units::Count::get(),
-                  "amount of packets which failed to sent"),
+                  "amount of request packets which failed to sent"),
               ADD_STAT(memRetryCountSend, statistics::units::Count::get(),
-                  "amount of packets sent as a result of a retry")
+                  "amount of request packets sent as a result of a retry")
         {
         }
     } stats;
@@ -70,6 +83,9 @@ class CryptoCtrl : public SimObject
     {
       private:
         CryptoCtrl* owner;
+
+        // store packets for retries
+        std::queue<PacketPtr> failedPackets;
 
       public:
         CPUSidePort(const std::string& name, CryptoCtrl* owner)
@@ -119,11 +135,11 @@ class CryptoCtrl : public SimObject
         CryptoCtrl* owner;
 
         // store packet for retries
-        PacketPtr failedPkt;
+        std::queue<PacketPtr> failedPackets;
 
       public:
         MemSidePort(const std::string& name, CryptoCtrl* owner)
-            : RequestPort(name), owner(owner), failedPkt(nullptr)
+            : RequestPort(name), owner(owner)
         {
         }
 
@@ -211,7 +227,17 @@ class CryptoCtrl : public SimObject
      */
     void handleDelayedResponse();
     EventFunctionWrapper delayResponse;
-    PacketPtr responsePkt;
+    std::priority_queue<DelayedPacket, std::vector<DelayedPacket>,
+        std::greater<DelayedPacket>>
+        queueResponse;
+    unsigned int numberOutstandingResponses() const;
+
+    void handleDelayedRequest();
+    EventFunctionWrapper delayRequest;
+    std::priority_queue<DelayedPacket, std::vector<DelayedPacket>,
+        std::greater<DelayedPacket>>
+        queueRequest;
+    unsigned int numberOutstandingRequest() const;
 
     /// Instantiation of the CPU-side ports
     CPUSidePort cpuPort;

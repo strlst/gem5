@@ -1,6 +1,6 @@
 OPTIONS:=
 GEM5:=build/RISCV/gem5.opt
-GEM5_CONFIG:=configs/tlcpu/config.py --l1i-size=1KiB --l1d-size=1KiB --l2-size=2KiB --memsec #--ooo
+GEM5_CONFIG:=configs/tlcpu/config.py --l1i-size=1KiB --l1d-size=1KiB --l2-size=2KiB --memsec --ooo
 DEBUG_FLAGS:=--debug-flags=DRAMsim3,CryptoCtrl
 REMOTE_HOSTNAME:=tlml003
 REMOTE_DIR:=~/gem5
