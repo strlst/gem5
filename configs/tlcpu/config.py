@@ -69,17 +69,16 @@ def create_system(args):
 
     system.l2cache = L2Cache(size=args.l2_size)
     system.l2cache.connectCPUSideBus(system.l2bus)
-    system.l2cache.connectMemSideBus(system.membus)
 
     # dramsim specific setup
     system.mem_ctrl = DRAMSim3MemCtrl(mem_name="DDR4_8Gb_x8_3200", num_chnls=1)
-    print(args.memsec)
     if args.memsec:
         system.crypto_ctrl = CryptoCtrl()
-        system.mem_ctrl.port = system.crypto_ctrl.mem_side_port
-        system.crypto_ctrl.cpu_side_port = system.membus.mem_side_ports
+        system.l2cache.mem_side = system.crypto_ctrl.cpu_side_port
+        system.crypto_ctrl.mem_side_port = system.membus.cpu_side_ports
     else:
-        system.mem_ctrl.port = system.membus.mem_side_ports
+        system.l2cache.mem_side = system.membus.cpu_side_ports
+    system.mem_ctrl.port = system.membus.mem_side_ports
     system.mem_ranges = [system.mem_ctrl.range]
 
     return system

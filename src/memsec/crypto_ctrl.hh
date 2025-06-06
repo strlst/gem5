@@ -237,7 +237,7 @@ class CryptoCtrl : public SimObject
     std::priority_queue<DelayedPacket, std::vector<DelayedPacket>,
         std::greater<DelayedPacket>>
         queueRequest;
-    unsigned int numberOutstandingRequest() const;
+    unsigned int numberOutstandingRequests() const;
 
     /// Instantiation of the CPU-side ports
     CPUSidePort cpuPort;

@@ -4,7 +4,6 @@
 #include <queue>
 #include <utility>
 
-#include "base/stats/units.hh"
 #include "base/trace.hh"
 #include "debug/CryptoCtrl.hh"
 #include "mem/packet.hh"
@@ -56,6 +55,12 @@ CryptoCtrl::numberOutstandingResponses() const
     return queueResponse.size();
 }
 
+unsigned int
+CryptoCtrl::numberOutstandingRequests() const
+{
+    return queueRequest.size();
+}
+
 Port&
 CryptoCtrl::getPort(const std::string& if_name, PortID idx)
 {
@@ -81,10 +86,8 @@ CryptoCtrl::CPUSidePort::getAddrRanges() const
 void
 CryptoCtrl::CPUSidePort::sendPacket(PacketPtr pkt)
 {
-    DPRINTF(CryptoCtrl, "send %s\n", formattedPacket(pkt));
-    ++owner->stats.cpuTotalCountSend;
+    owner->stats.cpuTotalCountSend++;
 
-    // panic if we cannot send packet
     bool success = sendTimingResp(pkt);
     if (!success) {
         failedPackets.push(pkt);
@@ -133,7 +136,7 @@ CryptoCtrl::MemSidePort::sendPacket(PacketPtr pkt)
     owner->stats.memTotalCountSend++;
 
     // make sure we cannot miss packets
-    bool success = sendTimingReq(pkt);
+    bool success = failedPackets.empty() && sendTimingReq(pkt);
     if (!success) {
         failedPackets.push(pkt);
         ++owner->stats.memFailuresCountSend;
@@ -157,13 +160,20 @@ CryptoCtrl::MemSidePort::recvReqRetry()
 {
     auto failedPkt = failedPackets.front();
     failedPackets.pop();
-    // just forward
-    DPRINTF(CryptoCtrl, "(retry) timing request %s\n",
-        formattedPacket(failedPkt));
     owner->stats.memRetryCountSend++;
 
     bool success = owner->handleRequest(failedPkt);
+    DPRINTF(CryptoCtrl, "(retry) timing request %s, success=%d\n",
+        formattedPacket(failedPkt), success);
     panic_if(!success, "(retry) timing request is not allowed to fail!");
+
+    if (!failedPackets.empty()) {
+        failedPkt = failedPackets.front();
+        failedPackets.pop();
+        DPRINTF(CryptoCtrl, "(retry) send packet in failure queue %s\n",
+            formattedPacket(failedPkt));
+        sendPacket(failedPkt);
+    }
 }
 
 void
