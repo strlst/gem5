@@ -7,6 +7,8 @@ class CryptoCtrl(SimObject):
     cxx_header = "memsec/crypto_ctrl.hh"
     cxx_class = "gem5::CryptoCtrl"
 
+    # default parameters sourced from
+    # https://ieeexplore.ieee.org/document/7019004
     aes_enc_cycles = Param.Cycles(
         336, "AES-CTR encryption operation cycle delay per block"
     )

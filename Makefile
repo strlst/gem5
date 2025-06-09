@@ -37,5 +37,4 @@ test-stream:
 clean:
 	rm -rf m5out build
 
-
 .PHONY: build debug build build-dev remote-run remote-debug remote-build test-stream clean

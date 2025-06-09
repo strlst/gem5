@@ -2,7 +2,6 @@
 #define __MEMSEC_CRYPTO_CTRL_HH__
 
 #include <cstdint>
-#include <functional>
 #include <queue>
 
 #include "base/statistics.hh"
@@ -106,7 +105,7 @@ class CryptoCtrl : public SimObject
          * Receive a functional request packet from the request port.
          * Performs a "debug" access updating/reading the data in place.
          *
-         * @param packet the requestor sent.
+         * @param packet the requestor sent
          */
         void recvFunctional(PacketPtr pkt) override;
 
@@ -171,7 +170,7 @@ class CryptoCtrl : public SimObject
     /**
      * Handle the request from the CPU side
      *
-     * @param requesting packet
+     * @param pkt requesting packet
      * @return true if we can handle the request this cycle, false if the
      *         requestor needs to retry later
      */
@@ -180,7 +179,7 @@ class CryptoCtrl : public SimObject
     /**
      * Handle the respone from the memory side
      *
-     * @param responding packet
+     * @param pkt responding packet
      * @return true if we can handle the response this cycle, false if the
      *         responder needs to retry later
      */
@@ -207,38 +206,6 @@ class CryptoCtrl : public SimObject
      */
     void sendRangeChange();
 
-    /**
-     * Creates an entirely new packet.
-     *
-     * @return: pointer to created packet
-     */
-    PacketPtr createPkt(Addr addr, size_t size, uint32_t flags,
-        uint16_t requestorId, MemCmd cmd);
-
-    /**
-     * Copy existing an existing packet to create a new packet.
-     *
-     * @return: pointer to created packet
-     */
-    PacketPtr createPktFromPkt(PacketPtr pkt, MemCmd cmd);
-
-    /**
-     * Introduce a delay on an operation.
-     */
-    void handleDelayedResponse();
-    EventFunctionWrapper delayResponse;
-    std::priority_queue<DelayedPacket, std::vector<DelayedPacket>,
-        std::greater<DelayedPacket>>
-        queueResponse;
-    unsigned int numberOutstandingResponses() const;
-
-    void handleDelayedRequest();
-    EventFunctionWrapper delayRequest;
-    std::priority_queue<DelayedPacket, std::vector<DelayedPacket>,
-        std::greater<DelayedPacket>>
-        queueRequest;
-    unsigned int numberOutstandingRequests() const;
-
     /// Instantiation of the CPU-side ports
     CPUSidePort cpuPort;
 
@@ -262,6 +229,45 @@ class CryptoCtrl : public SimObject
      */
     Port&
     getPort(const std::string& if_name, PortID idx = InvalidPortID) override;
+
+    /**
+     * If data sent from the CPU side needs to be encrypted, emulate
+     * encryption feature functionally and also its timing.
+     *
+     * @param pkt requesting packet
+     */
+    void AESEncrypt(PacketPtr pkt);
+
+    /**
+     * If data sent from the memory side needs to be decrypted, emulate
+     * encryption feature functionally and also its timing.
+     *
+     * @param pkt requesting packet
+     */
+    void AESDecrypt(PacketPtr pkt);
+
+    /**
+     * Creates an entirely new packet.
+     *
+     * @param address address to fill in
+     * @param size packet size to allocate
+     * @param flags flags to use
+     * @param requestorId id to fill in
+     * @param cmd memory command to fill in
+     * @return: pointer to created packet
+     */
+    PacketPtr createPkt(Addr addr, size_t size, uint32_t flags,
+        uint16_t requestorId, MemCmd cmd);
+
+    /**
+     * Copy existing an existing packet to create a new packet.
+     *
+     *
+     * @param pkt requesting packet
+     * @param cmd memory command to fill in
+     * @return: pointer to created packet
+     */
+    PacketPtr createPktFromPkt(PacketPtr pkt, MemCmd cmd);
 };
 
 } // namespace gem5
