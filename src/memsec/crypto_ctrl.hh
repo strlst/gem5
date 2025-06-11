@@ -37,6 +37,7 @@ typedef std::pair<Tick, PacketPtr> DelayedPacket;
 class CryptoCtrl : public SimObject
 {
   private:
+    Tick aes_enc_ready, aes_dec_ready;
     uint32_t aes_enc_cycles, aes_dec_cycles;
     uint32_t aes_enc_ii, aes_dec_ii;
 
@@ -92,7 +93,7 @@ class CryptoCtrl : public SimObject
         {
         }
 
-        void sendPacket(PacketPtr pkt);
+        bool sendPacket(PacketPtr pkt);
         AddrRangeList getAddrRanges() const override;
 
       protected:
@@ -142,7 +143,7 @@ class CryptoCtrl : public SimObject
         {
         }
 
-        void sendPacket(PacketPtr pkt);
+        bool sendPacket(PacketPtr pkt);
 
       protected:
         /**
@@ -174,7 +175,7 @@ class CryptoCtrl : public SimObject
      * @return true if we can handle the request this cycle, false if the
      *         requestor needs to retry later
      */
-    bool handleRequest(PacketPtr pkt);
+    bool handleRequest(PacketPtr pkt, bool encrypt = true);
 
     /**
      * Handle the respone from the memory side
@@ -183,7 +184,7 @@ class CryptoCtrl : public SimObject
      * @return true if we can handle the response this cycle, false if the
      *         responder needs to retry later
      */
-    bool handleResponse(PacketPtr pkt);
+    bool handleResponse(PacketPtr pkt, bool decrypt = true);
 
     /**
      * Handle a packet functionally. Update the data on a write and get the
@@ -236,7 +237,7 @@ class CryptoCtrl : public SimObject
      *
      * @param pkt requesting packet
      */
-    void AESEncrypt(PacketPtr pkt);
+    void CryptoWrite(PacketPtr pkt);
 
     /**
      * If data sent from the memory side needs to be decrypted, emulate
@@ -244,30 +245,7 @@ class CryptoCtrl : public SimObject
      *
      * @param pkt requesting packet
      */
-    void AESDecrypt(PacketPtr pkt);
-
-    /**
-     * Creates an entirely new packet.
-     *
-     * @param address address to fill in
-     * @param size packet size to allocate
-     * @param flags flags to use
-     * @param requestorId id to fill in
-     * @param cmd memory command to fill in
-     * @return: pointer to created packet
-     */
-    PacketPtr createPkt(Addr addr, size_t size, uint32_t flags,
-        uint16_t requestorId, MemCmd cmd);
-
-    /**
-     * Copy existing an existing packet to create a new packet.
-     *
-     *
-     * @param pkt requesting packet
-     * @param cmd memory command to fill in
-     * @return: pointer to created packet
-     */
-    PacketPtr createPktFromPkt(PacketPtr pkt, MemCmd cmd);
+    void CryptoRead(PacketPtr pkt);
 };
 
 } // namespace gem5

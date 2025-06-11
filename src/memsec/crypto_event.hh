@@ -1,34 +1,39 @@
 #include "crypto_ctrl.hh"
 
-namespace gem5 {
+namespace gem5
+{
 
-class AESEncryptEvent : public Event
+class CryptoWriteEvent : public Event
 {
   private:
     CryptoCtrl *ctrl;
     PacketPtr pkt;
   public:
-    AESEncryptEvent(CryptoCtrl *ctrl, PacketPtr pkt) :
-        Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt)
-    { }
-    void process() override {
+    CryptoWriteEvent(CryptoCtrl *ctrl, PacketPtr pkt)
+        : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt)
+    {
+    }
+    void process() override
+    {
         // process packet by using callback
-        ctrl->AESEncrypt(pkt);
+        ctrl->CryptoWrite(pkt);
     }
 };
 
-class AESDecryptEvent : public Event
+class CryptoReadEvent : public Event
 {
   private:
     CryptoCtrl *ctrl;
     PacketPtr pkt;
   public:
-    AESDecryptEvent(CryptoCtrl *ctrl, PacketPtr pkt) :
-        Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt)
-    { }
-    void process() override {
+    CryptoReadEvent(CryptoCtrl *ctrl, PacketPtr pkt)
+        : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt)
+    {
+    }
+    void process() override
+    {
         // process packet by using callback
-        ctrl->AESDecrypt(pkt);
+        ctrl->CryptoRead(pkt);
     }
 };
 
