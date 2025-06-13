@@ -12,8 +12,8 @@ class CacheSystem:
         system.l2cache.connectCPUSideBusPort(system.l2bus.mem_side_ports)
 
         for core in system.cpu:
-            core.icache = L1ICache(size=args.l1i_size, assoc=8)
-            core.dcache = L1DCache(size=args.l1d_size, assoc=8)
+            core.icache = L1ICache(size=args.l1i_size)
+            core.dcache = L1DCache(size=args.l1d_size)
             core.icache.connectCPU(core)
             core.dcache.connectCPU(core)
 
@@ -72,7 +72,7 @@ class BasicCache(Cache):
 
 
 class L1Cache(BasicCache):
-    assoc = 4
+    assoc = 2
     tag_latency = 2
     data_latency = 2
     response_latency = 2
@@ -92,17 +92,18 @@ class L1DCache(L1Cache):
 
 class L2Cache(BasicCache):
     assoc = 8
-    tag_latency = 2
-    data_latency = 3
-    response_latency = 3
-    mshrs = 4
-    tgts_per_mshr = 20
+    tag_latency = 16
+    data_latency = 16
+    response_latency = 16
+    mshrs = 20
+    tgts_per_mshr = 12
+    write_buffers = 8
 
 
 class L3Cache(BasicCache):
     assoc = 8
-    tag_latency = 3
-    data_latency = 4
-    response_latency = 4
-    mshrs = 8
-    tgts_per_mshr = 32
+    tag_latency = 50
+    data_latency = 50
+    response_latency = 50
+    mshrs = 20
+    tgts_per_mshr = 12
