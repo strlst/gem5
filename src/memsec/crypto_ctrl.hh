@@ -68,11 +68,11 @@ class CryptoCtrl : public SimObject
               ADD_STAT(memTotalCountRecv, statistics::units::Count::get(),
                   "amount of received packets"),
               ADD_STAT(cpuFailuresCountSend, statistics::units::Count::get(),
-                  "amount of response packets which failed to sent"),
+                  "amount of response packets which failed to send"),
               ADD_STAT(cpuRetryCountSend, statistics::units::Count::get(),
                   "amount of response packets sent as a result of a retry"),
               ADD_STAT(memFailuresCountSend, statistics::units::Count::get(),
-                  "amount of request packets which failed to sent"),
+                  "amount of request packets which failed to send"),
               ADD_STAT(memRetryCountSend, statistics::units::Count::get(),
                   "amount of request packets sent as a result of a retry")
         {

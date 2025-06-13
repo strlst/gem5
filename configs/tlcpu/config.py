@@ -1,11 +1,11 @@
 import argparse
 
 from caches import *
+from memory import *
 
 import m5
 from m5.objects import *
 
-from gem5.components.memory.dramsim_3 import DRAMSim3MemCtrl
 from gem5.resources.resource import obtain_resource
 
 
@@ -20,6 +20,13 @@ def parse_args():
         help="path to the binary to use as a bare-metal test",
     )
     parser.add_argument(
+        "--num-cores",
+        default=1,
+        type=int,
+        nargs="?",
+        help="number of CPU cores to instantiate",
+    )
+    parser.add_argument(
         "--l1i-size",
         default="16KiB",
         help="L1 instruction cache size (default: 16KiB)",
@@ -32,8 +39,24 @@ def parse_args():
     parser.add_argument(
         "--l2-size", default="512KiB", help="L2 cache size (default: 256KiB)"
     )
-    parser.add_argument("--memsec", action=argparse.BooleanOptionalAction)
-    parser.add_argument("--ooo", action=argparse.BooleanOptionalAction)
+    parser.add_argument(
+        "--l3-size", default="4096KiB", help="L3 cache size (default: 4096KiB)"
+    )
+    parser.add_argument(
+        "--l3",
+        action=argparse.BooleanOptionalAction,
+        help="flag to enable/disable existence of an L3 cache",
+    )
+    parser.add_argument(
+        "--memsec",
+        action=argparse.BooleanOptionalAction,
+        help="flag to enable/disable memory security subsystem used for confidentiality and integrity",
+    )
+    parser.add_argument(
+        "--ooo",
+        action=argparse.BooleanOptionalAction,
+        help="flag to enable/disable use of O3 CPU model",
+    )
     return parser.parse_args()
 
 
@@ -49,53 +72,41 @@ def create_system(args):
     system.mem_mode = "timing"
     system.mem_ranges = [AddrRange("8GiB")]
 
+    n_cores = lambda cpu: [cpu() for _ in range(args.num_cores)]
     if args.ooo:
-        system.cpu = RiscvO3CPU()
+        system.cpu = n_cores(RiscvO3CPU)
     else:
-        system.cpu = RiscvTimingSimpleCPU()
+        system.cpu = n_cores(RiscvTimingSimpleCPU)
 
-    system.cpu.createInterruptController()
-    system.membus = SystemXBar()
+    for core in system.cpu:
+        core.createInterruptController()
 
-    system.cpu.icache = L1ICache(size=args.l1i_size)
-    system.cpu.dcache = L1DCache(size=args.l1d_size)
-    system.cpu.icache.connectCPU(system.cpu)
-    system.cpu.dcache.connectCPU(system.cpu)
+    cache_system = CacheSystem()
+    cache_system.initialize(system, args)
 
-    system.l2bus = L2XBar()
-
-    system.cpu.icache.connectBus(system.l2bus)
-    system.cpu.dcache.connectBus(system.l2bus)
-
-    system.l2cache = L2Cache(size=args.l2_size)
-    system.l2cache.connectCPUSideBus(system.l2bus)
-
-    # dramsim specific setup
-    system.mem_ctrl = DRAMSim3MemCtrl(mem_name="DDR4_8Gb_x8_3200", num_chnls=1)
-    if args.memsec:
-        system.crypto_ctrl = CryptoCtrl()
-        system.l2cache.mem_side = system.crypto_ctrl.cpu_side_port
-        system.crypto_ctrl.mem_side_port = system.membus.cpu_side_ports
-    else:
-        system.l2cache.mem_side = system.membus.cpu_side_ports
-    system.mem_ctrl.port = system.membus.mem_side_ports
-    system.mem_ranges = [system.mem_ctrl.range]
+    memory_system = MemorySystem()
+    memory_system.initialize(system, args, cache_system)
 
     return system
 
 
-def set_workload(system, args):
-    system.workload = SEWorkload.init_compatible(args.binary)
+def set_threaded_workload(system, args):
     process = Process()
     process.cmd = [args.binary]
-    system.cpu.workload = process
-    system.cpu.createThreads()
+
+    # set workload for each cpu
+    for cpu in system.cpu:
+        cpu.workload = process
+        cpu.createThreads()
+
+    # set system workload itself
+    system.workload = SEWorkload.init_compatible(args.binary)
 
 
 def main():
     args = parse_args()
     system = create_system(args)
-    set_workload(system, args)
+    set_threaded_workload(system, args)
 
     # create root of gem5 hierarchy
     root = Root(full_system=False, system=system)
