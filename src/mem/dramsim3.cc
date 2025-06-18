@@ -228,7 +228,7 @@ DRAMsim3::recvTimingReq(PacketPtr pkt)
         // and there isn't
         assert(wrapper.canAccept(pkt->getAddr(), pkt->isWrite()));
 
-        DPRINTF(DRAMsim3, "Enqueueing address %lld\n", pkt->getAddr());
+        DPRINTF(DRAMsim3, "Enqueueing address 0x%x\n", pkt->getAddr());
 
         // @todo what about the granularity here, implicit assumption that
         // a transaction matches the burst size of the memory (which we
@@ -255,7 +255,7 @@ DRAMsim3::recvRespRetry()
 void
 DRAMsim3::accessAndRespond(PacketPtr pkt)
 {
-    DPRINTF(DRAMsim3, "Access for address %lld\n", pkt->getAddr());
+    DPRINTF(DRAMsim3, "Access for address 0x%x\n", pkt->getAddr());
 
     bool needsResponse = pkt->needsResponse();
 
@@ -273,7 +273,7 @@ DRAMsim3::accessAndRespond(PacketPtr pkt)
         // Reset the timings of the packet
         pkt->headerDelay = pkt->payloadDelay = 0;
 
-        DPRINTF(DRAMsim3, "Queuing response for address %lld\n",
+        DPRINTF(DRAMsim3, "Queuing response for address 0x%x\n",
                 pkt->getAddr());
 
         // queue it to be sent back
@@ -292,7 +292,7 @@ DRAMsim3::accessAndRespond(PacketPtr pkt)
 void DRAMsim3::readComplete(unsigned id, uint64_t addr)
 {
 
-    DPRINTF(DRAMsim3, "Read to address %lld complete\n", addr);
+    DPRINTF(DRAMsim3, "Read to address 0x%x complete\n", addr);
 
     // get the outstanding reads for the address in question
     auto p = outstandingReads.find(addr);
@@ -318,7 +318,7 @@ void DRAMsim3::readComplete(unsigned id, uint64_t addr)
 void DRAMsim3::writeComplete(unsigned id, uint64_t addr)
 {
 
-    DPRINTF(DRAMsim3, "Write to address %lld complete\n", addr);
+    DPRINTF(DRAMsim3, "Write to address 0x%x complete\n", addr);
 
     // get the outstanding reads for the address in question
     auto p = outstandingWrites.find(addr);

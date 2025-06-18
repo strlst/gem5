@@ -1,0 +1,188 @@
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define ARRAY_SIZE 256
+#define DIM_SIZE 16
+
+typedef int data_t;
+static data_t input1_data[ARRAY_SIZE] =
+{
+    0,   3,   2,   0,   3,   1,   0,   3,
+    2,   3,   2,   0,   3,   3,   1,   2,
+    3,   0,   0,   1,   1,   1,   2,   3,
+    1,   2,   3,   1,   1,   3,   2,   2,
+    0,   1,   3,   2,   2,   2,   0,   0,
+    1,   0,   1,   3,   3,   0,   3,   3,
+    3,   3,   0,   3,   2,   1,   2,   2,
+    0,   0,   3,   0,   1,   1,   0,   3,
+    3,   1,   2,   3,   3,   0,   1,   2,
+    1,   0,   1,   2,   2,   1,   0,   3,
+    1,   0,   2,   2,   1,   1,   1,   1,
+    1,   1,   2,   0,   3,   1,   1,   2,
+    2,   3,   3,   1,   3,   2,   0,   0,
+    0,   3,   3,   3,   2,   1,   2,   3,
+    1,   0,   0,   0,   0,   1,   2,   2,
+    1,   1,   3,   3,   3,   1,   1,   2,
+    3,   1,   3,   3,   2,   3,   2,   1,
+    2,   3,   0,   2,   2,   1,   1,   0,
+    0,   0,   0,   0,   1,   3,   3,   1,
+    1,   1,   2,   2,   3,   2,   1,   1,
+    1,   1,   3,   0,   2,   2,   1,   3,
+    2,   1,   2,   2,   1,   3,   1,   3,
+    1,   3,   2,   3,   1,   2,   1,   3,
+    2,   2,   0,   1,   0,   0,   1,   2,
+    3,   3,   1,   0,   0,   0,   3,   1,
+    2,   3,   2,   3,   2,   0,   0,   0,
+    0,   0,   3,   1,   3,   0,   0,   0,
+    3,   1,   1,   1,   1,   2,   1,   2,
+    3,   2,   0,   0,   2,   2,   3,   0,
+    3,   0,   0,   3,   0,   3,   1,   3,
+    3,   1,   1,   1,   2,   2,   1,   3,
+    0,   3,   3,   1,   0,   0,   3,   2
+};
+
+static data_t input2_data[ARRAY_SIZE] =
+{
+    1,   1,   0,   3,   1,   2,   0,   0,
+    0,   0,   0,   2,   1,   2,   3,   0,
+    0,   3,   3,   2,   2,   1,   2,   3,
+    3,   0,   2,   2,   1,   1,   2,   2,
+    0,   2,   2,   1,   2,   3,   2,   2,
+    3,   3,   2,   2,   1,   1,   1,   1,
+    2,   1,   2,   2,   3,   3,   3,   0,
+    0,   3,   2,   3,   2,   3,   1,   2,
+    1,   1,   2,   2,   0,   1,   0,   3,
+    2,   1,   1,   1,   2,   0,   1,   2,
+    2,   0,   2,   1,   3,   3,   2,   3,
+    2,   0,   3,   1,   3,   3,   2,   0,
+    1,   0,   1,   1,   2,   2,   1,   1,
+    2,   2,   1,   2,   3,   3,   1,   3,
+    2,   2,   2,   3,   3,   1,   0,   2,
+    1,   0,   0,   0,   1,   1,   2,   0,
+    3,   2,   3,   3,   0,   2,   3,   1,
+    0,   0,   2,   1,   2,   0,   2,   1,
+    1,   2,   3,   1,   3,   2,   1,   0,
+    0,   0,   0,   0,   2,   2,   0,   2,
+    1,   2,   0,   3,   2,   2,   0,   0,
+    3,   2,   1,   1,   3,   0,   2,   0,
+    0,   1,   0,   2,   3,   3,   1,   3,
+    3,   0,   0,   2,   2,   0,   0,   0,
+    1,   0,   0,   1,   3,   0,   2,   1,
+    3,   2,   2,   1,   3,   2,   0,   1,
+    2,   2,   3,   2,   1,   1,   1,   1,
+    3,   0,   1,   3,   2,   2,   3,   1,
+    1,   2,   0,   2,   1,   1,   2,   3,
+    1,   0,   1,   0,   1,   1,   0,   0,
+    2,   0,   3,   0,   3,   0,   3,   2,
+    2,   3,   3,   2,   1,   0,   2,   2
+};
+
+static data_t verify_data[ARRAY_SIZE] =
+{
+    36,  44,  57,  50,  54,  36,  38,  46,
+    55,  25,  38,  34,  51,  30,  40,  32,
+    37,  34,  38,  52,  51,  40,  28,  32,
+    41,  22,  26,  35,  49,  35,  42,  23,
+    26,  26,  33,  36,  52,  40,  45,  49,
+    50,  34,  41,  35,  44,  25,  23,  23,
+    31,  29,  39,  46,  50,  36,  31,  32,
+    42,  32,  34,  41,  44,  33,  43,  30,
+    31,  28,  39,  46,  50,  40,  35,  37,
+    43,  35,  33,  43,  43,  29,  37,  29,
+    27,  22,  30,  33,  43,  31,  32,  25,
+    36,  31,  31,  29,  40,  28,  26,  22,
+    29,  42,  48,  51,  65,  52,  43,  54,
+    63,  34,  42,  44,  56,  33,  38,  32,
+    26,  22,  23,  38,  49,  32,  26,  30,
+    43,  22,  24,  27,  45,  24,  26,  17,
+    35,  35,  47,  51,  59,  59,  43,  42,
+    43,  28,  37,  43,  56,  48,  36,  32,
+    28,  19,  28,  34,  46,  34,  28,  34,
+    45,  20,  29,  28,  50,  32,  26,  21,
+    37,  38,  51,  50,  55,  45,  38,  49,
+    56,  28,  38,  40,  50,  29,  44,  26,
+    32,  35,  50,  43,  53,  44,  41,  41,
+    34,  24,  35,  34,  39,  33,  34,  29,
+    21,  33,  31,  45,  48,  42,  27,  29,
+    40,  17,  21,  32,  45,  30,  29,  26,
+    26,  27,  38,  33,  29,  31,  32,  31,
+    35,  25,  29,  29,  34,  15,  25,  23,
+    34,  28,  44,  45,  41,  41,  37,  45,
+    45,  17,  34,  44,  46,  30,  43,  29,
+    31,  36,  37,  50,  54,  44,  28,  40,
+    38,  22,  27,  28,  45,  32,  36,  22
+};
+
+#pragma GCC optimize ("unroll-loops")
+void matmul(const size_t coreid, const size_t ncores, const size_t lda,
+            const data_t A[], const data_t B[], data_t C[]) {
+    size_t i, j, k;
+    size_t block = lda / ncores;
+    size_t start = block * coreid;
+
+    for (i = 0; i < lda; i++) {
+        for (j = start; j < (start+block); j++) {
+            data_t sum = 0;
+            for (k = 0; k < lda; k++)
+                sum += A[j*lda + k] * B[k*lda + i];
+            C[i + j*lda] = sum;
+        }
+    }
+}
+
+#pragma GCC optimize ("unroll-loops")
+int verify(size_t array_size, const data_t result[], const data_t verified[]) {
+    size_t incorrect = 0;
+    for (int i = 0; i < array_size; i++) {
+        if (result[i] != verified[i]) {
+            printf(
+                "index %d value %d mismatch, should be %d\n",
+                 i,
+                 result[i],
+                 verified[i]
+            );
+            incorrect++;
+        }
+    }
+    return incorrect;
+}
+
+int main(void) {
+    // create enclave and store key
+    uint32_t key = 0;
+    printf("creating enclave... ");
+    asm volatile ("tecreate %0\n" : "=r"(key) ::);
+
+    // initialize enclave
+    printf("initializing enclave... ");
+    asm volatile ("teinit %0\n" :: "r"(key) :);
+
+    // enter enclave
+    printf("entering enclave... ");
+    asm volatile ("teenter %0\n" :: "r"(key) :);
+    printf("complete\n");
+
+    static data_t results_data[ARRAY_SIZE];
+
+    matmul(0, 1, DIM_SIZE, input1_data, input2_data, results_data);
+    int result = verify(ARRAY_SIZE, results_data, verify_data);
+    printf(
+        "result is %s (%d mismatches)\n",
+        result == 0 ? "correct" : "incorrect",
+        result
+    );
+
+    // exit enclave
+    printf("exiting enclave... ");
+    asm volatile ("teexit %0\n" :: "r"(key) :);
+
+    // enter enclave
+    printf("destroying enclave... ");
+    asm volatile ("tedestroy %0\n" :: "r"(key) :);
+    printf("complete\n");
+
+    return result != 0;
+}

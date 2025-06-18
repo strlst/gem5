@@ -113,7 +113,7 @@ def main():
 
     m5.instantiate()
 
-    print(f"\nSimulation start")
+    print()
     event = m5.simulate()
     print(f"{event.getCause()} ({event.getCode()}) @ {m5.curTick()}")
 

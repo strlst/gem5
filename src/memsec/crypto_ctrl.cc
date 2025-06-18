@@ -17,7 +17,7 @@ formattedPacket(PacketPtr pkt)
 {
     std::ostringstream ss;
     ss << "pkt(";
-    ss << "addr=" << unsigned(pkt->getAddr());
+    ss << "addr=0x" << std::hex << unsigned(pkt->getAddr());
     ss << ", cmd=" << pkt->cmdString();
     ss << ", id=" << unsigned(pkt->requestorId());
     ss << ", size=" << unsigned(pkt->getSize());
@@ -243,7 +243,8 @@ CryptoCtrl::handleRequest(PacketPtr pkt, bool encrypt)
 void
 CryptoCtrl::CryptoWrite(PacketPtr pkt)
 {
-    bool success = memPort.sendPacket(pkt);
+    // for now ignore return value
+    memPort.sendPacket(pkt);
 }
 
 bool
@@ -297,7 +298,8 @@ CryptoCtrl::handleResponse(PacketPtr pkt, bool decrypt)
 void
 CryptoCtrl::CryptoRead(PacketPtr pkt)
 {
-    bool success = cpuPort.sendPacket(pkt);
+    // for now ignore return value
+    cpuPort.sendPacket(pkt);
 }
 
 void
