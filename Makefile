@@ -1,6 +1,7 @@
 OPTIONS:=
 GEM5:=build/RISCV/gem5.opt
-BINARY:=tests/test-progs/memsec/bin/riscv/linux/secmatmul
+#BINARY:=tests/test-progs/memsec/bin/riscv/linux/secmatmul
+BINARY:=tests/test-progs/matmul/bin/riscv/linux/matmul
 GEM5_PIPEVIEW:=--debug-flags=O3PipeView --debug-start=0 --debug-file=trace.out
 GEM5_CONFIG:=configs/tlcpu/config.py --l1i-size=1KiB --l1d-size=1KiB --l2-size=2KiB --no-l3 --memsec --ooo --num-cores=1
 PIPEVIEW:=util/o3-pipeview.py

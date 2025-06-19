@@ -165,6 +165,8 @@ int main(void) {
     asm volatile ("teenter %0\n" :: "r"(key) :);
     printf("complete\n");
 
+    // TODO: align data and methods on secure pages
+
     static data_t results_data[ARRAY_SIZE];
 
     matmul(0, 1, DIM_SIZE, input1_data, input2_data, results_data);

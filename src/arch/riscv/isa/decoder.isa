@@ -4867,6 +4867,25 @@ decode QUADRANT default Unknown::unknown() {
             }
         }
 
+        0x16: decode FUNCT3 {
+            format IOp {
+                0x0: tecreate({{
+                }});
+                0x1: tedestroy({{
+                }});
+                0x2: teexit({{
+                }});
+                0x3: teinit({{
+                }});
+            }
+            format ROp {
+                0x4: teadd({{
+                }});
+                0x5: teremove({{
+                }});
+            }
+        }
+
         0x18: decode FUNCT3 {
             format BOp {
                 0x0: beq({{
