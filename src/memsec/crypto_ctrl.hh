@@ -4,12 +4,13 @@
 #include <cstdint>
 #include <queue>
 
+#include "base/addr_range.hh"
 #include "base/statistics.hh"
 #include "base/stats/group.hh"
 #include "mem/packet.hh"
 #include "mem/port.hh"
 #include "params/CryptoCtrl.hh"
-#include "sim/sim_object.hh"
+#include "sim/clocked_object.hh"
 
 #define TICK_PER_CYCLE 1000
 #define AFTER_1_CYCLE(t) ((t) + TICK_PER_CYCLE)
@@ -17,7 +18,7 @@
 
 // parameters sourced from https://ieeexplore.ieee.org/document/7019004
 // AES supports 128 bit blocks
-#define AES_BLOCK_BYTES (128 / 8)
+//#define AES_BLOCK_BYTES (128 / 8)
 // cycle latencies
 //#define AES_ENC_CYCLES 336
 //#define AES_DEC_CYCLES 216
@@ -34,12 +35,18 @@ typedef std::pair<Tick, PacketPtr> DelayedPacket;
 /**
  * A very simple controller.
  */
-class CryptoCtrl : public SimObject
+class CryptoCtrl : public ClockedObject
 {
   private:
     Tick aes_enc_ready, aes_dec_ready;
+    uint32_t aes_block_size, aes_block_bytes;
     uint32_t aes_enc_cycles, aes_dec_cycles;
     uint32_t aes_enc_ii, aes_dec_ii;
+    uint32_t counter_size, counter_bytes;
+    uint32_t mac_size, mac_bytes;
+    uint32_t mac_packing_factor;
+
+    AddrRange secure_region;
 
     struct PktStats : public Group
     {

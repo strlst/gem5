@@ -6,7 +6,7 @@ GEM5_PIPEVIEW:=--debug-flags=O3PipeView --debug-start=0 --debug-file=trace.out
 GEM5_CONFIG:=configs/tlcpu/config.py --l1i-size=1KiB --l1d-size=1KiB --l2-size=2KiB --no-l3 --memsec --ooo --num-cores=1
 PIPEVIEW:=util/o3-pipeview.py
 PIPEVIEW_CONFIG:=-c 1000 -o m5out/pipeview.out --color m5out/trace.out
-DEBUG_FLAGS:=--debug-flags=DRAMsim3,CryptoCtrl,MMU
+DEBUG_FLAGS:=--debug-flags=DRAMsim3,CryptoCtrl
 REMOTE_HOSTNAME:=tlml003
 REMOTE_DIR:=~/gem5
 

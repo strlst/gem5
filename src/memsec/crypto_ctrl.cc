@@ -1,5 +1,6 @@
 #include "memsec/crypto_ctrl.hh"
 
+#include <cmath>
 #include <cstdint>
 #include <queue>
 
@@ -7,6 +8,7 @@
 #include "crypto_event.hh"
 #include "debug/CryptoCtrl.hh"
 #include "mem/packet.hh"
+#include "sim/clocked_object.hh"
 #include "sim/cur_tick.hh"
 
 namespace gem5
@@ -49,19 +51,44 @@ createPktFromPkt(PacketPtr pkt, MemCmd cmd)
 }
 
 CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
-    : SimObject(params), aes_enc_ready(0), aes_dec_ready(0),
+    : ClockedObject(params), aes_enc_ready(0), aes_dec_ready(0),
+      aes_block_size(params.aes_block_size),
+      aes_block_bytes(params.aes_block_size / 8),
       aes_enc_cycles(params.aes_enc_cycles),
       aes_dec_cycles(params.aes_dec_cycles), aes_enc_ii(params.aes_enc_ii),
-      aes_dec_ii(params.aes_dec_ii), stats(this),
+      aes_dec_ii(params.aes_dec_ii), counter_size(params.counter_size),
+      counter_bytes(params.counter_size / 8), mac_size(params.mac_size),
+      mac_bytes(params.mac_size / 8),
+      mac_packing_factor(params.mac_packing_factor), stats(this),
       cpuPort(params.name + ".cpu_side_port", this),
       memPort(params.name + ".mem_side_port", this)
 {
+    uint64_t total_memory_size = (uint32_t)exp2(33);
+    uint32_t tree_node_size = counter_size + mac_size / mac_packing_factor;
+
+    DPRINTF(CryptoCtrl, "Created crypto controller with properties\n");
+    DPRINTF(CryptoCtrl, "\t\t\t%d total memory size (%f MiB)\n",
+        total_memory_size, (float)total_memory_size / 8.f / 1024.f / 1024.f);
+    DPRINTF(CryptoCtrl, "\t\t\t%d aes block size (%d bytes)\n",
+        aes_block_size, aes_block_bytes);
+    DPRINTF(CryptoCtrl, "\t\t\t%d aes encryption cycles (%d ii)\n",
+        aes_enc_cycles, aes_enc_ii);
+    DPRINTF(CryptoCtrl, "\t\t\t%d aes decryption cycles (%d ii)\n",
+        aes_dec_cycles, aes_dec_ii);
+    DPRINTF(CryptoCtrl, "\t\t\t%d counter size (%d bytes)\n", counter_size,
+        counter_bytes);
+    DPRINTF(CryptoCtrl, "\t\t\t%d mac size (%d bytes, %d packing factor)\n",
+        mac_size, mac_bytes, mac_packing_factor);
+    DPRINTF(CryptoCtrl, "\t\t\t%d tree node size (%d bytes)\n",
+        tree_node_size, tree_node_size / 8);
+    uint64_t int_tree_size_required = (total_memory_size + tree_node_size) /
+        (aes_block_size / 2 + tree_node_size);
+    uint32_t int_tree_height = std::ceil(std::log2(int_tree_size_required));
+    uint64_t int_tree_size = (uint32_t)std::exp2(int_tree_height);
     DPRINTF(CryptoCtrl,
-        "Created crypto controller with properties\n"
-        "\t\t\t%d aes encryption cycles (%d ii)\n"
-        "\t\t\t%d aes decryption cycles (%d ii)\n",
-        params.aes_enc_cycles, params.aes_enc_ii, params.aes_dec_cycles,
-        params.aes_dec_ii);
+        "\t\t\t%d integrity tree size (%d MiB, %d height, %d nodes)\n",
+        int_tree_size, (float)int_tree_size / 8.f / 1024.f / 1024.f,
+        int_tree_height, int_tree_size / tree_node_size);
 }
 
 Port&
@@ -224,7 +251,7 @@ CryptoCtrl::handleRequest(PacketPtr pkt, bool encrypt)
         // consider when the incoming request becomes servicable
         // if the unit might be busy
         Tick start = curTick() > aes_enc_ready ? curTick() : aes_enc_ready;
-        int iterations = pkt->getSize() / AES_BLOCK_BYTES;
+        int iterations = pkt->getSize() / aes_block_bytes;
         // every II we schedule an iteration, considering ramp-up and ramp-down
         Tick delay = iterations * aes_enc_ii + (aes_enc_cycles - aes_enc_ii);
         Tick end = start + delay;
@@ -278,7 +305,7 @@ CryptoCtrl::handleResponse(PacketPtr pkt, bool decrypt)
         // consider when the incoming request becomes servicable,
         // if the unit might be busy
         Tick start = curTick() > aes_dec_ready ? curTick() : aes_dec_ready;
-        int iterations = pkt->getSize() / AES_BLOCK_BYTES;
+        int iterations = pkt->getSize() / aes_block_bytes;
         // every II we schedule an iteration, considering ramp-up and ramp-down
         Tick delay = iterations * aes_dec_ii + (aes_dec_cycles - aes_dec_ii);
         Tick end = start + delay;
