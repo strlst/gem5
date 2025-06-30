@@ -63,15 +63,20 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
       cpuPort(params.name + ".cpu_side_port", this),
       memPort(params.name + ".mem_side_port", this)
 {
+    // make some calculations for automatic integrity tree creation
     total_memory_bytes = params.range.size() * bytes_per_address;
     total_memory_bits = total_memory_bytes * 8;
-    tree_node_bits = counter_bits + mac_bytes / packing_factor;
+    tree_node_bits = counter_bits * packing_factor + mac_bits;
 
     // calculate integrity tree parameters
     // this formula is derived by hand
     uint64_t int_tree_bits_required = (total_memory_bits + tree_node_bits) /
         (aes_block_bits / 2 + tree_node_bits);
+    // extract bits needed
     int_tree_height = std::ceil(std::log2(int_tree_bits_required));
+    integrity_tree.reset(new FlatTree<uint64_t, 0>(int_tree_height));
+
+    // calculate region sizes in bytes
     region_integrity_bytes = (uint64_t)std::exp2(int_tree_height);
     region_data_bytes = total_memory_bytes - region_integrity_bytes;
 
@@ -84,28 +89,31 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
         aes_enc_cycles, aes_enc_ii);
     DPRINTF(CryptoCtrl, "\t\t\t%d aes decryption cycles (%d ii)\n",
         aes_dec_cycles, aes_dec_ii);
-    DPRINTF(CryptoCtrl, "\t\t\t%d counter bits (%d bytes)\n", counter_bits,
-        counter_bytes);
-    DPRINTF(CryptoCtrl, "\t\t\t%d mac bits (%d bytes, %d packing factor)\n",
-        mac_bits, mac_bytes, packing_factor);
+    DPRINTF(CryptoCtrl,
+        "\t\t\t%d counter bits (%d bytes, %d packing factor)\n", counter_bits,
+        counter_bytes, packing_factor);
+    DPRINTF(CryptoCtrl, "\t\t\t%d mac bits (%d bytes)\n", mac_bits, mac_bytes);
     DPRINTF(CryptoCtrl, "\t\t\t%d tree node bits (%d bytes)\n",
         tree_node_bits, tree_node_bits / 8);
     DPRINTF(CryptoCtrl,
         "\t\t\t%d integrity tree bits (%f MiB, %d height, %d nodes)\n",
-        region_integrity_bytes,
+        region_integrity_bytes / 8,
         (double)region_integrity_bytes / 1024.f / 1024.f, int_tree_height,
-        int_tree_leaf_bits);
+        (uint64_t)std::exp2(int_tree_height - 1));
 
+    // assign memory regions
     region_data = AddrRange(params.range.start(),
         params.range.start() +
             (total_memory_bytes - region_integrity_bytes) / bytes_per_address);
     region_integrity = AddrRange(params.range.start() +
             (total_memory_bytes - region_integrity_bytes) / bytes_per_address,
         params.range.start() + total_memory_bytes / bytes_per_address);
+
     DPRINTF(CryptoCtrl, "\t\t\t%s memory region (data)\n",
         region_data.to_string());
     DPRINTF(CryptoCtrl, "\t\t\t%s memory region (integrity)\n",
         region_integrity.to_string());
+
     // sanity check
     assert(params.range.end() ==
         params.range.start() +
@@ -295,6 +303,12 @@ CryptoCtrl::CryptoWrite(PacketPtr pkt)
 {
     // for now ignore return value
     memPort.sendPacket(pkt);
+
+    // next we save the new counter and
+    // update the integrity tree along the path
+    // NOTE: assume addresses are byte addresses and already aligned
+    // on DRAM bus width
+    // TODO: implement rest of tree update logic here
 }
 
 bool

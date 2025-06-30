@@ -9,6 +9,7 @@
 #include "base/stats/group.hh"
 #include "mem/packet.hh"
 #include "mem/port.hh"
+#include "memsec/flat_tree.hh"
 #include "params/CryptoCtrl.hh"
 #include "sim/clocked_object.hh"
 
@@ -25,7 +26,6 @@
 // initiation intervals
 //#define AES_ENC_II 336
 //#define AES_DEC_II 216
-
 
 namespace gem5
 {
@@ -49,7 +49,6 @@ class CryptoCtrl : public ClockedObject
 
     uint64_t tree_node_bits;
     uint64_t int_tree_height;
-    uint64_t int_tree_leaf_bits;
     uint64_t int_tree_branching_factor;
 
     uint64_t total_memory_bits;
@@ -60,6 +59,10 @@ class CryptoCtrl : public ClockedObject
 
     AddrRange region_integrity;
     uint64_t region_integrity_bytes;
+
+    // create integrity tree with simple nodes
+    // TODO: change node type to packed nodes
+    std::unique_ptr<FlatTree<uint64_t, 0>> integrity_tree;
 
     struct PktStats : public Group
     {
