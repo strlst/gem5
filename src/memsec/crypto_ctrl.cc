@@ -52,43 +52,66 @@ createPktFromPkt(PacketPtr pkt, MemCmd cmd)
 
 CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
     : ClockedObject(params), aes_enc_ready(0), aes_dec_ready(0),
-      aes_block_size(params.aes_block_size),
-      aes_block_bytes(params.aes_block_size / 8),
+      aes_block_bits(params.aes_block_bits),
+      aes_block_bytes(params.aes_block_bits / 8),
       aes_enc_cycles(params.aes_enc_cycles),
       aes_dec_cycles(params.aes_dec_cycles), aes_enc_ii(params.aes_enc_ii),
-      aes_dec_ii(params.aes_dec_ii), counter_size(params.counter_size),
-      counter_bytes(params.counter_size / 8), mac_size(params.mac_size),
-      mac_bytes(params.mac_size / 8),
-      mac_packing_factor(params.mac_packing_factor), stats(this),
+      aes_dec_ii(params.aes_dec_ii), counter_bits(params.counter_bits),
+      counter_bytes(params.counter_bits / 8), mac_bits(params.mac_bits),
+      mac_bytes(params.mac_bits / 8), packing_factor(params.packing_factor),
+      bytes_per_address(params.bytes_per_address), stats(this),
       cpuPort(params.name + ".cpu_side_port", this),
       memPort(params.name + ".mem_side_port", this)
 {
-    uint64_t total_memory_size = (uint32_t)exp2(33);
-    uint32_t tree_node_size = counter_size + mac_size / mac_packing_factor;
+    total_memory_bytes = params.range.size() * bytes_per_address;
+    total_memory_bits = total_memory_bytes * 8;
+    tree_node_bits = counter_bits + mac_bytes / packing_factor;
+
+    // calculate integrity tree parameters
+    // this formula is derived by hand
+    uint64_t int_tree_bits_required = (total_memory_bits + tree_node_bits) /
+        (aes_block_bits / 2 + tree_node_bits);
+    int_tree_height = std::ceil(std::log2(int_tree_bits_required));
+    region_integrity_bytes = (uint64_t)std::exp2(int_tree_height);
+    region_data_bytes = total_memory_bytes - region_integrity_bytes;
 
     DPRINTF(CryptoCtrl, "Created crypto controller with properties\n");
-    DPRINTF(CryptoCtrl, "\t\t\t%d total memory size (%f MiB)\n",
-        total_memory_size, (float)total_memory_size / 8.f / 1024.f / 1024.f);
-    DPRINTF(CryptoCtrl, "\t\t\t%d aes block size (%d bytes)\n",
-        aes_block_size, aes_block_bytes);
+    DPRINTF(CryptoCtrl, "\t\t\t%d total memory bytes (%f MiB)\n",
+        total_memory_bytes, (double)total_memory_bytes / 1024.f / 1024.f);
+    DPRINTF(CryptoCtrl, "\t\t\t%d aes block bits (%d bytes)\n",
+        aes_block_bits, aes_block_bytes);
     DPRINTF(CryptoCtrl, "\t\t\t%d aes encryption cycles (%d ii)\n",
         aes_enc_cycles, aes_enc_ii);
     DPRINTF(CryptoCtrl, "\t\t\t%d aes decryption cycles (%d ii)\n",
         aes_dec_cycles, aes_dec_ii);
-    DPRINTF(CryptoCtrl, "\t\t\t%d counter size (%d bytes)\n", counter_size,
+    DPRINTF(CryptoCtrl, "\t\t\t%d counter bits (%d bytes)\n", counter_bits,
         counter_bytes);
-    DPRINTF(CryptoCtrl, "\t\t\t%d mac size (%d bytes, %d packing factor)\n",
-        mac_size, mac_bytes, mac_packing_factor);
-    DPRINTF(CryptoCtrl, "\t\t\t%d tree node size (%d bytes)\n",
-        tree_node_size, tree_node_size / 8);
-    uint64_t int_tree_size_required = (total_memory_size + tree_node_size) /
-        (aes_block_size / 2 + tree_node_size);
-    uint32_t int_tree_height = std::ceil(std::log2(int_tree_size_required));
-    uint64_t int_tree_size = (uint32_t)std::exp2(int_tree_height);
+    DPRINTF(CryptoCtrl, "\t\t\t%d mac bits (%d bytes, %d packing factor)\n",
+        mac_bits, mac_bytes, packing_factor);
+    DPRINTF(CryptoCtrl, "\t\t\t%d tree node bits (%d bytes)\n",
+        tree_node_bits, tree_node_bits / 8);
     DPRINTF(CryptoCtrl,
-        "\t\t\t%d integrity tree size (%d MiB, %d height, %d nodes)\n",
-        int_tree_size, (float)int_tree_size / 8.f / 1024.f / 1024.f,
-        int_tree_height, int_tree_size / tree_node_size);
+        "\t\t\t%d integrity tree bits (%f MiB, %d height, %d nodes)\n",
+        region_integrity_bytes,
+        (double)region_integrity_bytes / 1024.f / 1024.f, int_tree_height,
+        int_tree_leaf_bits);
+
+    region_data = AddrRange(params.range.start(),
+        params.range.start() +
+            (total_memory_bytes - region_integrity_bytes) / bytes_per_address);
+    region_integrity = AddrRange(params.range.start() +
+            (total_memory_bytes - region_integrity_bytes) / bytes_per_address,
+        params.range.start() + total_memory_bytes / bytes_per_address);
+    DPRINTF(CryptoCtrl, "\t\t\t%s memory region (data)\n",
+        region_data.to_string());
+    DPRINTF(CryptoCtrl, "\t\t\t%s memory region (integrity)\n",
+        region_integrity.to_string());
+    // sanity check
+    assert(params.range.end() ==
+        params.range.start() +
+            (region_data_bytes + region_integrity_bytes) / bytes_per_address);
+    assert(params.range.start() == region_data.start());
+    assert(params.range.end() == region_integrity.end());
 }
 
 Port&
@@ -96,7 +119,7 @@ CryptoCtrl::getPort(const std::string& if_name, PortID idx)
 {
     panic_if(idx != InvalidPortID, "This object doesn't support vector ports");
 
-    // This is the name from the Python SimObject declaration (CryptoCtrl.py)
+    // this is the name from the Python SimObject declaration (CryptoCtrl.py)
     if (if_name == "mem_side_port") {
         return memPort;
     } else if (if_name == "cpu_side_port") {
@@ -339,8 +362,7 @@ CryptoCtrl::handleFunctional(PacketPtr pkt)
 AddrRangeList
 CryptoCtrl::getAddrRanges() const
 {
-    DPRINTF(CryptoCtrl, "sending new ranges\n");
-    // just use the same ranges as whatever is on the memory side
+    // return the mem port ranges
     return memPort.getAddrRanges();
 }
 

@@ -39,14 +39,27 @@ class CryptoCtrl : public ClockedObject
 {
   private:
     Tick aes_enc_ready, aes_dec_ready;
-    uint32_t aes_block_size, aes_block_bytes;
-    uint32_t aes_enc_cycles, aes_dec_cycles;
-    uint32_t aes_enc_ii, aes_dec_ii;
-    uint32_t counter_size, counter_bytes;
-    uint32_t mac_size, mac_bytes;
-    uint32_t mac_packing_factor;
+    uint64_t aes_block_bits, aes_block_bytes;
+    uint64_t aes_enc_cycles, aes_dec_cycles;
+    uint64_t aes_enc_ii, aes_dec_ii;
+    uint64_t counter_bits, counter_bytes;
+    uint64_t mac_bits, mac_bytes;
+    uint64_t packing_factor;
+    uint64_t bytes_per_address;
 
-    AddrRange secure_region;
+    uint64_t tree_node_bits;
+    uint64_t int_tree_height;
+    uint64_t int_tree_leaf_bits;
+    uint64_t int_tree_branching_factor;
+
+    uint64_t total_memory_bits;
+    uint64_t total_memory_bytes;
+
+    AddrRange region_data;
+    uint64_t region_data_bytes;
+
+    AddrRange region_integrity;
+    uint64_t region_integrity_bytes;
 
     struct PktStats : public Group
     {

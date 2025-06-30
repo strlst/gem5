@@ -70,8 +70,6 @@ def create_system(args):
     )
 
     system.mem_mode = "timing"
-    system.mem_ranges = [AddrRange("8GiB")]
-    print(f"address range is {system.mem_ranges[0]}")
 
     n_cores = lambda cpu: [cpu() for _ in range(args.num_cores)]
     if args.ooo:
