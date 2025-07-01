@@ -25,7 +25,7 @@ class CryptoCtrl(ClockedObject):
     counter_bits = Param.Int(64, "AES counter value size in bits")
     mac_bits = Param.Int(128, "MAC resulting size in bits")
     packing_factor = Param.Int(
-        6, "amount of counters which form one node (or MAC)"
+        8, "amount of counters which form one node (or MAC)"
     )
 
     # cpu side port, connected to the CPU

@@ -1,3 +1,6 @@
+#ifndef __MEMSEC_CRYPTO_EVENT_HH__
+#define __MEMSEC_CRYPTO_EVENT_HH__
+
 #include "crypto_ctrl.hh"
 
 namespace gem5
@@ -36,4 +39,8 @@ class CryptoReadEvent : public Event
         ctrl->CryptoRead(pkt);
     };
 
+};
+
 }
+
+#endif // __MEMSEC_CRYPTO_EVENT_HH__

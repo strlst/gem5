@@ -48,6 +48,7 @@ class CryptoCtrl : public ClockedObject
     uint64_t bytes_per_address;
 
     uint64_t tree_node_bits;
+    uint64_t tree_node_bytes;
     uint64_t int_tree_height;
     uint64_t int_tree_branching_factor;
 
