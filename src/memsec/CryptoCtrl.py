@@ -22,11 +22,14 @@ class CryptoCtrl(ClockedObject):
         216, "AES-CTR decryption operation initiation interval per block"
     )
     aes_block_bits = Param.Int(128, "AES-CTR block size in bits")
-    counter_bits = Param.Int(64, "AES counter value size in bits")
-    mac_bits = Param.Int(128, "MAC resulting size in bits")
+    counter_bits = Param.Int(56, "AES counter value size in bits")
+    mac_bits = Param.Int(64, "MAC resulting size in bits")
     packing_factor = Param.Int(
         8, "amount of counters which form one node (or MAC)"
     )
+    # TODO: find practical values for MAC operation durations
+    mac_cycles = Param.Cycles(200, "MAC operation cycle delay per block")
+    mac_ii = Param.Cycles(200, "MAC operation initiation interval per block")
 
     # cpu side port, connected to the CPU
     cpu_side_port = ResponsePort("CPU side port")

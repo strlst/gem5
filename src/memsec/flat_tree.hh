@@ -26,22 +26,21 @@ namespace gem5
  * However, for read chains of the tree, parallel lookups are possible.
  *
  * @tparam T the type of the values stored in the tree
- * @tparam default_value the default value for the tree nodes
  */
-template<typename T, const T default_value> class FlatTree
+template<typename T> class FlatTree
 {
   public:
     FlatTree(const uint64_t tree_height, const uint64_t packing_factor)
         : tree_height(tree_height), packing_factor(packing_factor)
     {
         // we use the known formula n = (p^(h + 1) - 1) / (p - 1) for the
-        // node count, while subtracting the root node
+        // node count
         max_address =
             uint64_t((std::pow(packing_factor, tree_height + 1) - 1) /
-                (packing_factor - 1)) -
-            1;
+                (packing_factor - 1));
         tree.resize(max_address);
-        std::fill(tree.begin(), tree.end(), default_value);
+        for (auto& element : tree)
+            element.init(packing_factor);
     }
 
     void update(Addr address, T data)
@@ -59,14 +58,30 @@ template<typename T, const T default_value> class FlatTree
     Addr child_address(Addr address, uint64_t child)
     {
         assert(child < packing_factor);
-        return (address << packing_factor) | child;
+        // variant for power of 2 packing factor
+        // return (address << packing_factor) | child;
+        return address * packing_factor + child;
     }
 
-    Addr parent_address(Addr address) { return address >> packing_factor; }
+    uint64_t child_offset(Addr address) {
+        // variant for power of 2 packing factor
+        // return address & (packing_factor - 1);
+        return address % packing_factor;
+    }
+
+    Addr parent_address(Addr address) {
+        // variant for power of 2 packing factor
+        // return address >> packing_factor;
+        return address / packing_factor;
+    }
 
     Addr get_root_address() { return 0; }
 
     Addr get_max_address() { return max_address; }
+
+    size_t get_size() {
+        return tree.size();
+    }
 
   private:
     std::vector<T> tree;

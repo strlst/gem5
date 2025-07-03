@@ -80,13 +80,14 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
             std::log(packing_factor)) -
         1;
     integrity_tree.reset(
-        new FlatTree<uint64_t, 0>(int_tree_height, packing_factor));
+        new FlatTree<BMTNode>(int_tree_height, packing_factor));
+    DPRINTF(CryptoCtrl, "updated %d elements\n", integrity_tree->get_size());
 
     // calculate region sizes in bytes
-    uint64_t tree_node_count =
+    tree_node_count =
         std::pow(packing_factor, int_tree_height + 1) / (packing_factor - 1);
-    uint64_t leaf_node_count =
-        std::pow(packing_factor, int_tree_height) * (packing_factor - 1);
+    leaf_node_count = tree_node_count -
+        std::pow(packing_factor, int_tree_height) / (packing_factor - 1);
     region_integrity_bytes = (tree_node_count - 1) * tree_node_bytes;
     region_data_bytes = total_memory_bytes - region_integrity_bytes;
 
@@ -109,7 +110,7 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
         counter_bytes);
     DPRINTF(CryptoCtrl, "\t\t\t%d mac bits (%d bytes)\n", mac_bits, mac_bytes);
     DPRINTF(CryptoCtrl,
-        "\t\t\t%d tree node bits (%d bytes, %d packing factor)\n",
+        "\t\t\t%d integrity tree node bits (%d bytes, %d packing factor)\n",
         tree_node_bits, tree_node_bytes, packing_factor);
     DPRINTF(CryptoCtrl, "\t\t\t%d integrity tree bytes (%f MiB, %d height)\n",
         region_integrity_bytes,
@@ -137,13 +138,12 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
         std::log2(integrity_tree->get_max_address()));
 
     // sanity check
-    assert(region_data_bytes + region_integrity_bytes == total_memory_bytes);
+    assert(region_data_bytes + region_integrity_bytes <= total_memory_bytes);
     assert(region_data_bytes > region_integrity_bytes);
     assert(region_data.start() < region_data.end());
     assert(region_data.end() == region_integrity.start());
     assert(region_integrity.start() < region_integrity.end());
-    assert(params.range.end() ==
-        params.range.start() +
+    assert(params.range.end() >= params.range.start() +
             (region_data_bytes + region_integrity_bytes) / bytes_per_address);
     assert(params.range.start() == region_data.start());
     assert(params.range.end() >= region_integrity.end());
@@ -338,33 +338,34 @@ CryptoCtrl::CryptoWrite(PacketPtr pkt)
     // to get a leaf node address from a data address, we need to convert
     // appropriately
     // leaf i = address / packing_factor, counter c = address % packing_factor
-    // TODO: something is not quite right, the address needs to be expanded
-    Addr address = pkt->getAddr() / packing_factor;
+    uint64_t node_index = pkt->getAddr() / packing_factor;
+    uint64_t node_offset = pkt->getAddr() % packing_factor;
+    // we need to offset the node index to the region where the leaves
+    // are stored
+    // TODO: properly consider that we are dealing with 64 byte packets
+    // (bytes_per_address)
+    Addr node_address = node_index + tree_node_count - leaf_node_count;
+    Addr parent_address;
 
-    // update the counter at the leaf node
-    // TODO: in practice, we would be manipulating only a specific counter
-    // value
-    uint64_t current_counter = integrity_tree->lookup(address);
-    current_counter++;
-    integrity_tree->update(address, current_counter);
-    DPRINTF(CryptoCtrl, "updated leaf 0x%x with value %x for address %x\n",
-        address, current_counter, pkt->getAddr());
+    // TODO: implement accurate timing of this operation and schedule
+    // memory operations
+    DPRINTF(CryptoCtrl,
+        "write on data block 0x%x stored at node %d, offset %d\n",
+        pkt->getAddr(), node_index, node_offset);
 
     // recalculate integrity values up the tree
     do {
-        address = integrity_tree->parent_address(address);
-        // enumerate all children
-        current_counter = 0;
-        for (int k = 0; k < packing_factor; k++) {
-            Addr child_addr = integrity_tree->child_address(address, k);
-            // TODO: in practice, we would do a specific counter update with
-            // MAC calculation
-            current_counter ^= integrity_tree->lookup(child_addr);
-        }
-        integrity_tree->update(address, current_counter);
-        DPRINTF(CryptoCtrl, "updated node %x with value %x\n", address,
-            current_counter);
-    } while (address != 0);
+        auto node = integrity_tree->lookup(node_address);
+        parent_address = integrity_tree->parent_address(node_address);
+        auto parent = integrity_tree->lookup(parent_address);
+        node.increment(node_offset);
+        parent.increment(node_offset);
+        node.update_mac(parent.counters.at(node_offset));
+        DPRINTF(CryptoCtrl,
+            "tree update @ address 0x%x, parent address 0x%x, %s\n",
+            node_address, parent_address, node.to_string());
+        node_address = parent_address;
+    } while (node_address != 0);
 }
 
 bool

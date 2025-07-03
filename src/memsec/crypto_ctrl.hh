@@ -9,6 +9,7 @@
 #include "base/stats/group.hh"
 #include "mem/packet.hh"
 #include "mem/port.hh"
+#include "memsec/bmt_node.hh"
 #include "memsec/flat_tree.hh"
 #include "params/CryptoCtrl.hh"
 #include "sim/clocked_object.hh"
@@ -49,6 +50,8 @@ class CryptoCtrl : public ClockedObject
 
     uint64_t tree_node_bits;
     uint64_t tree_node_bytes;
+    uint64_t tree_node_count;
+    uint64_t leaf_node_count;
     uint64_t int_tree_height;
     uint64_t int_tree_branching_factor;
 
@@ -62,8 +65,7 @@ class CryptoCtrl : public ClockedObject
     uint64_t region_integrity_bytes;
 
     // create integrity tree with simple nodes
-    // TODO: change node type to packed nodes
-    std::unique_ptr<FlatTree<uint64_t, 0>> integrity_tree;
+    std::unique_ptr<FlatTree<BMTNode>> integrity_tree;
 
     struct PktStats : public Group
     {
