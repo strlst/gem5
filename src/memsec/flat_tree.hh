@@ -49,7 +49,7 @@ template<typename T> class FlatTree
         tree.at(address) = data;
     }
 
-    T lookup(Addr address)
+    T& lookup(Addr address)
     {
         assert(address < max_address);
         return tree.at(address);

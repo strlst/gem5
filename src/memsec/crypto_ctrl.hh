@@ -55,6 +55,8 @@ class CryptoCtrl : public ClockedObject
     uint64_t int_tree_height;
     uint64_t int_tree_branching_factor;
 
+    uint64_t total_memory_addresses;
+    uint64_t total_memory_blocks;
     uint64_t total_memory_bits;
     uint64_t total_memory_bytes;
 
