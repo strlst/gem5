@@ -270,7 +270,9 @@ LSQUnit::LSQUnitStats::LSQUnitStats(statistics::Group *parent)
                "Number of times an access to memory failed due to the cache "
                "being blocked"),
       ADD_STAT(loadToUse, "Distribution of cycle latency between the "
-                "first time a load is issued and its completion")
+                "first time a load is issued and its completion"),
+      ADD_STAT(addedLoadsAndStores, statistics::units::Count::get(),
+               "Number of loads and stores written to the Load Store Queue")
 {
     loadToUse
         .init(0, 299, 10)
@@ -320,6 +322,7 @@ LSQUnit::insertLoad(const DynInstPtr &load_inst)
 {
     assert(!loadQueue.full());
     assert(loadQueue.size() < loadQueue.capacity());
+    ++stats.addedLoadsAndStores;
 
     DPRINTF(LSQUnit, "Inserting load PC %s, idx:%i [sn:%lli]\n",
             load_inst->pcState(), loadQueue.tail(), load_inst->seqNum);
@@ -381,6 +384,7 @@ LSQUnit::insertStore(const DynInstPtr& store_inst)
     // Make sure it is not full before inserting an instruction.
     assert(!storeQueue.full());
     assert(storeQueue.size() < storeQueue.capacity());
+    ++stats.addedLoadsAndStores;
 
     DPRINTF(LSQUnit, "Inserting store PC %s, idx:%i [sn:%lli]\n",
             store_inst->pcState(), storeQueue.tail(), store_inst->seqNum);
@@ -596,6 +600,11 @@ LSQUnit::executeLoad(const DynInstPtr &inst)
             inst->pcState(), inst->seqNum);
 
     assert(!inst->isSquashed());
+
+    if (inst->isExecuted()) {
+        DPRINTF(LSQUnit, "Load [sn:%lli] already executed\n", inst->seqNum);
+        return NoFault;
+    }
 
     load_fault = inst->initiateAcc();
 
@@ -1592,10 +1601,18 @@ LSQUnit::read(LSQRequest *request, ssize_t load_idx)
     // and arbitrate between loads and stores.
 
     // if we the cache is not blocked, do cache access
+    // if the request is not sent and cache is unblocked
+    // then put the instruction into retry queue so we do not need
+    // an exta cycle to re-issue and execute
     request->buildPackets();
     request->sendPacketToCache();
-    if (!request->isSent())
-        iewStage->blockMemInst(load_inst);
+    if (!request->isSent()) {
+        if (!lsq->cacheBlocked()) {
+            iewStage->retryMemInst(load_inst);
+       } else {
+            iewStage->blockMemInst(load_inst);
+       }
+    }
 
     return NoFault;
 }

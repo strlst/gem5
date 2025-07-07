@@ -1,5 +1,5 @@
-# Copyright (c) 2021 The Regents of the University of California
-# All Rights Reserved.
+# Copyright (c) 2025 The Regents of the University of California
+# All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -24,26 +24,38 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import os
+# This Makefile compiles the hypercall-exit binary, used in the
+# "hypercall-exit-check.py" script to test the hypercall exit functionality.
+#
+# Notes:
+# * This must be compiled on an X86 host.
 
-from testlib.configuration import constants
+CC = g++
 
-from gem5.suite import *
+# This is the path to the gem5 root. Needs updated when added to gem5-resources
+# source repo.
+GEM5_ROOT = ../../../../..
 
-"""
-As the filename begins with `test_`, it will be added to the TestLib testsuite
-when `../main.py` is run.
+CFLAGS = -Wall -Werror -O2 -static -I $(GEM5_ROOT)/include
 
-The purpose of this file is to ensure the pyunit tests are executed as part
-of a typical TestLib execution. These have been added as part of the "quick"
-tests and will run with NULL/gem5.*
-"""
+SRC = hypercall-exit.cpp
+OBJ = $(SRC:.cpp=.o)
 
-gem5_verify_config(
-    name="pyunit-tests",
-    config=os.path.join(os.getcwd(), os.pardir, "run_pyunit.py"),
-    verifiers=(),
-    config_args=[],
-    valid_isas=(constants.all_compiled_tag,),
-    length=constants.quick_tag,
-)
+TARGET = hypercall-exit
+
+all: $(TARGET)
+
+%.o: %.cpp
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(TARGET): $(OBJ) $(GEM5_ROOT)/util/m5/build/x86/out
+
+	$(CC) $(CFLAGS) -o $@ $(OBJ) -lm5 -L $(GEM5_ROOT)/util/m5/build/x86/out
+
+$(GEM5_ROOT)/util/m5/build/x86/out:
+	cd $(GEM5_ROOT)/util/m5 && scons build/x86/out/m5 -j `nproc`
+
+clean:
+	- rm -r $(OBJ) $(TARGET)  $(GEM5_ROOT)/util/m5/build/x86/out
+
+.PHONY: all clean

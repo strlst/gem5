@@ -61,6 +61,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -315,6 +316,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -422,6 +424,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -486,6 +489,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -553,6 +557,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -718,6 +723,7 @@ namespace VegaISA
     Inst_DS__DS_NOP::execute(GPUDynInstPtr gpuDynInst)
     {
         gpuDynInst->wavefront()->decLGKMInstsIssued();
+        gpuDynInst->wavefront()->untrackLGKMInst(gpuDynInst);
     } // execute
     // --- Inst_DS__DS_ADD_F32 class methods ---
 
@@ -746,6 +752,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -808,6 +815,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -870,6 +878,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -932,6 +941,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -976,6 +986,9 @@ namespace VegaISA
     Inst_DS__DS_ADD_RTN_U32::Inst_DS__DS_ADD_RTN_U32(InFmt_DS *iFmt)
         : Inst_DS(iFmt, "ds_add_rtn_u32")
     {
+        setFlag(MemoryRef);
+        setFlag(AtomicAdd);
+        setFlag(AtomicReturn);
     } // Inst_DS__DS_ADD_RTN_U32
 
     Inst_DS__DS_ADD_RTN_U32::~Inst_DS__DS_ADD_RTN_U32()
@@ -990,8 +1003,59 @@ namespace VegaISA
     void
     Inst_DS__DS_ADD_RTN_U32::execute(GPUDynInstPtr gpuDynInst)
     {
-        panicUnimplemented();
+        Wavefront *wf = gpuDynInst->wavefront();
+
+        if (gpuDynInst->exec_mask.none()) {
+            wf->decLGKMInstsIssued();
+            return;
+        }
+
+        gpuDynInst->execUnitId = wf->execUnitId;
+        gpuDynInst->latency.init(gpuDynInst->computeUnit());
+        gpuDynInst->latency.set(
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+        ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
+        ConstVecOperandU32 data(gpuDynInst, extData.DATA0);
+
+        addr.read();
+        data.read();
+
+        calcAddr(gpuDynInst, addr);
+
+        for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
+            if (gpuDynInst->exec_mask[lane]) {
+                (reinterpret_cast<VecElemU32*>(gpuDynInst->a_data))[lane]
+                    = data[lane];
+            }
+        }
+
+        gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
     } // execute
+
+    void
+    Inst_DS__DS_ADD_RTN_U32::initiateAcc(GPUDynInstPtr gpuDynInst)
+    {
+        Addr offset0 = instData.OFFSET0;
+        Addr offset1 = instData.OFFSET1;
+        Addr offset = (offset1 << 8) | offset0;
+
+        initAtomicAccess<VecElemU32>(gpuDynInst, offset);
+    } // initiateAcc
+
+    void
+    Inst_DS__DS_ADD_RTN_U32::completeAcc(GPUDynInstPtr gpuDynInst)
+    {
+        VecOperandU32 vdst(gpuDynInst, extData.VDST);
+
+        for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
+            if (gpuDynInst->exec_mask[lane]) {
+                vdst[lane] = (reinterpret_cast<VecElemU32*>(
+                    gpuDynInst->d_data))[lane];
+            }
+        }
+
+        vdst.write();
+    } // completeAcc
     // --- Inst_DS__DS_SUB_RTN_U32 class methods ---
 
     Inst_DS__DS_SUB_RTN_U32::Inst_DS__DS_SUB_RTN_U32(InFmt_DS *iFmt)
@@ -1309,6 +1373,9 @@ namespace VegaISA
     Inst_DS__DS_CMPST_RTN_B32::Inst_DS__DS_CMPST_RTN_B32(InFmt_DS *iFmt)
         : Inst_DS(iFmt, "ds_cmpst_rtn_b32")
     {
+        setFlag(MemoryRef);
+        setFlag(AtomicCAS);
+        setFlag(AtomicReturn);
     } // Inst_DS__DS_CMPST_RTN_B32
 
     Inst_DS__DS_CMPST_RTN_B32::~Inst_DS__DS_CMPST_RTN_B32()
@@ -1328,8 +1395,66 @@ namespace VegaISA
     void
     Inst_DS__DS_CMPST_RTN_B32::execute(GPUDynInstPtr gpuDynInst)
     {
-        panicUnimplemented();
+        //panicUnimplemented();
+        Wavefront *wf = gpuDynInst->wavefront();
+
+        if (gpuDynInst->exec_mask.none()) {
+            wf->decLGKMInstsIssued();
+            return;
+        }
+
+        gpuDynInst->execUnitId = wf->execUnitId;
+        gpuDynInst->latency.init(gpuDynInst->computeUnit());
+        gpuDynInst->latency.set(
+                gpuDynInst->computeUnit()->cyclesToTicks(Cycles(24)));
+
+        ConstVecOperandU32 addr(gpuDynInst, extData.ADDR);
+        ConstVecOperandU32 src(gpuDynInst, extData.DATA1);
+        ConstVecOperandU32 cmp(gpuDynInst, extData.DATA0);
+
+        addr.read();
+        src.read();
+        cmp.read();
+        calcAddr(gpuDynInst, addr);
+
+        for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
+            if (gpuDynInst->exec_mask[lane]) {
+                (reinterpret_cast<VecElemU32*>(gpuDynInst->x_data))[lane]
+                    = src[lane];
+                (reinterpret_cast<VecElemU32*>(gpuDynInst->a_data))[lane]
+                    = cmp[lane];
+            }
+        }
+
+        gpuDynInst->computeUnit()->localMemoryPipe.issueRequest(gpuDynInst);
+
     } // execute
+    // --- Inst_DS__DS_CMPST_RTN_F32 class methods ---
+
+    void
+    Inst_DS__DS_CMPST_RTN_B32::initiateAcc(GPUDynInstPtr gpuDynInst)
+    {
+        Addr offset0 = instData.OFFSET0;
+        Addr offset1 = instData.OFFSET1;
+        Addr offset = (offset1 << 8) | offset0;
+
+        initAtomicAccess<VecElemU32>(gpuDynInst, offset);
+    } // initiateAcc
+
+    void
+    Inst_DS__DS_CMPST_RTN_B32::completeAcc(GPUDynInstPtr gpuDynInst)
+    {
+        VecOperandU32 vdst(gpuDynInst, extData.VDST);
+
+        for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
+            if (gpuDynInst->exec_mask[lane]) {
+                vdst[lane] = (reinterpret_cast<VecElemU32*>(
+                    gpuDynInst->d_data))[lane];
+            }
+        }
+
+        vdst.write();
+    } // completeAcc
     // --- Inst_DS__DS_CMPST_RTN_F32 class methods ---
 
     Inst_DS__DS_CMPST_RTN_F32::Inst_DS__DS_CMPST_RTN_F32(InFmt_DS *iFmt)
@@ -1475,6 +1600,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -1539,6 +1665,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -1606,6 +1733,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -1672,6 +1800,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -1735,6 +1864,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -1819,6 +1949,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -1882,6 +2013,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -1946,6 +2078,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -2013,6 +2146,7 @@ namespace VegaISA
     {
         Wavefront *wf = gpuDynInst->wavefront();
         wf->decLGKMInstsIssued();
+        wf->untrackLGKMInst(gpuDynInst);
 
         if (gpuDynInst->exec_mask.none()) {
             return;
@@ -2149,6 +2283,7 @@ namespace VegaISA
     {
         Wavefront *wf = gpuDynInst->wavefront();
         wf->decLGKMInstsIssued();
+        wf->untrackLGKMInst(gpuDynInst);
 
         if (gpuDynInst->exec_mask.none()) {
             return;
@@ -2237,6 +2372,7 @@ namespace VegaISA
     {
         Wavefront *wf = gpuDynInst->wavefront();
         wf->decLGKMInstsIssued();
+        wf->untrackLGKMInst(gpuDynInst);
 
         if (gpuDynInst->exec_mask.none()) {
             return;
@@ -2326,6 +2462,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -2644,6 +2781,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -2708,6 +2846,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -2775,6 +2914,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -3384,6 +3524,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -3448,6 +3589,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -3515,6 +3657,7 @@ namespace VegaISA
 
         if (gpuDynInst->exec_mask.none()) {
             wf->decLGKMInstsIssued();
+            wf->untrackLGKMInst(gpuDynInst);
             return;
         }
 
@@ -4557,11 +4700,11 @@ namespace VegaISA
         for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
             if (gpuDynInst->exec_mask[lane]) {
                 (reinterpret_cast<VecElemU32*>(
-                    gpuDynInst->d_data))[lane * 4] = data0[lane];
+                    gpuDynInst->d_data))[lane * 3] = data0[lane];
                 (reinterpret_cast<VecElemU32*>(
-                    gpuDynInst->d_data))[lane * 4 + 1] = data1[lane];
+                    gpuDynInst->d_data))[lane * 3 + 1] = data1[lane];
                 (reinterpret_cast<VecElemU32*>(
-                    gpuDynInst->d_data))[lane * 4 + 2] = data2[lane];
+                    gpuDynInst->d_data))[lane * 3 + 2] = data2[lane];
             }
         }
 
@@ -4702,11 +4845,11 @@ namespace VegaISA
         for (int lane = 0; lane < NumVecElemPerVecReg; ++lane) {
             if (gpuDynInst->exec_mask[lane]) {
                 vdst0[lane] = (reinterpret_cast<VecElemU32*>(
-                    gpuDynInst->d_data))[lane * 4];
+                    gpuDynInst->d_data))[lane * 3];
                 vdst1[lane] = (reinterpret_cast<VecElemU32*>(
-                    gpuDynInst->d_data))[lane * 4 + 1];
+                    gpuDynInst->d_data))[lane * 3 + 1];
                 vdst2[lane] = (reinterpret_cast<VecElemU32*>(
-                    gpuDynInst->d_data))[lane * 4 + 2];
+                    gpuDynInst->d_data))[lane * 3 + 2];
             }
         }
 

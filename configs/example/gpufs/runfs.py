@@ -83,6 +83,11 @@ def addRunFSOptions(parser):
     )
     parser.add_argument("--kernel", default=None, help="Linux kernel to boot")
     parser.add_argument(
+        "--gpu-ipt",
+        default=None,
+        help="Intended only for gem5 developers. IP discovery table to load",
+    )
+    parser.add_argument(
         "--checkpoint-before-mmios",
         default=False,
         action="store_true",
@@ -214,6 +219,13 @@ def addRunFSOptions(parser):
         default="TreePLRURP",
         choices=ObjectList.rp_list.get_names(),
         help="cache replacement policy" "policy for sqc",
+    )
+
+    parser.add_argument(
+        "--gpu-progress-interval",
+        type=int,
+        default=0,
+        help="Frequency in exec cycles of GPU progress prints",
     )
 
 

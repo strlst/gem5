@@ -1,4 +1,4 @@
-# Copyright (c) 2012-2014, 2017-2019, 2021, 2024 Arm Limited
+# Copyright (c) 2012-2014, 2017-2019, 2021, 2024-2025 Arm Limited
 # All rights reserved.
 #
 # The license below extends only to copyright in the software and shall
@@ -57,6 +57,7 @@
 import copy
 import datetime
 import math
+import pprint
 import re
 import sys
 import time
@@ -152,12 +153,7 @@ class ParamValue(metaclass=MetaParamValue):
 
 # Regular parameter description.
 class ParamDesc:
-    def __init__(self, ptype_str, ptype, *args, **kwargs):
-        self.ptype_str = ptype_str
-        # remember ptype only if it is provided
-        if ptype != None:
-            self.ptype = ptype
-
+    def __init__(self, *args, **kwargs):
         if args:
             if len(args) == 1:
                 self.desc = args[0]
@@ -183,6 +179,23 @@ class ParamDesc:
         if not hasattr(self, "desc"):
             raise TypeError("desc attribute missing")
 
+
+class SingleTypeParamDesc(ParamDesc):
+    """
+    ParamDesc with a single type. This applies for example
+    to an Int Param, or a Vector<Int> Param, and not to
+    parameters with multiple data types, like a Dict Param,
+    which has more than one type (the type of the key and the
+    type of the value).
+    """
+
+    def __init__(self, ptype_str, ptype, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ptype_str = ptype_str
+        # remember ptype only if it is provided
+        if ptype != None:
+            self.ptype = ptype
+
     def __getattr__(self, attr):
         if attr == "ptype":
             from . import SimObject
@@ -195,6 +208,10 @@ class ParamDesc:
         raise AttributeError(
             f"'{type(self).__name__}' object has no attribute '{attr}'"
         )
+
+    @property
+    def ptypes(self):
+        return [self.ptype]
 
     def example_str(self):
         if hasattr(self.ptype, "ex_str"):
@@ -231,7 +248,7 @@ class ParamDesc:
         return self.ptype(value).pretty_print(value)
 
     def cxx_predecls(self, code):
-        code("#include <cstddef>")
+        code("#include <cstddef>", add_once=True)
         self.ptype.cxx_predecls(code)
 
     def pybind_predecls(self, code):
@@ -268,6 +285,34 @@ class VectorParamValue(list, metaclass=MetaParamValue):
             return self[0].unproxy(base)
         else:
             return [v.unproxy(base) for v in self]
+
+
+class DictParamValue(dict, metaclass=MetaParamValue):
+    def __setattr__(self, attr, value):
+        raise AttributeError(
+            f"Not allowed to set {attr} on '{type(self).__name__}'"
+        )
+
+    def config_value(self):
+        return {
+            key.config_value(): value.config_value()
+            for key, value in self.items()
+        }
+
+    def ini_str(self):
+        # This is flattening the dictionary as a sequence of key, value pairs
+        return " ".join([elem.ini_str() for kv in self.items() for elem in kv])
+
+    def getValue(self):
+        return {
+            key.getValue(): value.getValue() for key, value in self.items()
+        }
+
+    def unproxy(self, base):
+        return {
+            key.unproxy(base): value.unproxy(base)
+            for key, value in self.items()
+        }
 
 
 class SimObjectVector(VectorParamValue):
@@ -344,22 +389,22 @@ class SimObjectVector(VectorParamValue):
         return flags_dict
 
 
-class VectorParamDesc(ParamDesc):
+class VectorParamDesc(SingleTypeParamDesc):
     # Convert assigned value to appropriate type.  If the RHS is not a
     # list or tuple, it generates a single-element list.
     def convert(self, value):
         if isinstance(value, (list, tuple)):
             # list: coerce each element into new list
-            tmp_list = [ParamDesc.convert(self, v) for v in value]
+            tmp_list = [SingleTypeParamDesc.convert(self, v) for v in value]
         elif isinstance(value, str):
             # If input is a csv string
             tmp_list = [
-                ParamDesc.convert(self, v)
+                SingleTypeParamDesc.convert(self, v)
                 for v in value.strip("[").strip("]").split(",")
             ]
         else:
             # singleton: coerce to a single-element list
-            tmp_list = [ParamDesc.convert(self, value)]
+            tmp_list = [SingleTypeParamDesc.convert(self, value)]
 
         if isSimObjectSequence(tmp_list):
             return SimObjectVector(tmp_list)
@@ -377,13 +422,16 @@ class VectorParamDesc(ParamDesc):
     # Produce a human readable representation of the value of this vector param.
     def pretty_print(self, value):
         if isinstance(value, (list, tuple)):
-            tmp_list = [ParamDesc.pretty_print(self, v) for v in value]
+            tmp_list = [
+                SingleTypeParamDesc.pretty_print(self, v) for v in value
+            ]
         elif isinstance(value, str):
             tmp_list = [
-                ParamDesc.pretty_print(self, v) for v in value.split(",")
+                SingleTypeParamDesc.pretty_print(self, v)
+                for v in value.split(",")
             ]
         else:
-            tmp_list = [ParamDesc.pretty_print(self, value)]
+            tmp_list = [SingleTypeParamDesc.pretty_print(self, value)]
 
         return tmp_list
 
@@ -391,29 +439,147 @@ class VectorParamDesc(ParamDesc):
     def __call__(self, value):
         if isinstance(value, (list, tuple)):
             # list: coerce each element into new list
-            tmp_list = [ParamDesc.convert(self, v) for v in value]
+            tmp_list = [SingleTypeParamDesc.convert(self, v) for v in value]
         elif isinstance(value, str):
             # If input is a csv string
             tmp_list = [
-                ParamDesc.convert(self, v)
+                SingleTypeParamDesc.convert(self, v)
                 for v in value.strip("[").strip("]").split(",")
             ]
         else:
             # singleton: coerce to a single-element list
-            tmp_list = [ParamDesc.convert(self, value)]
+            tmp_list = [SingleTypeParamDesc.convert(self, value)]
 
         return VectorParamValue(tmp_list)
 
     def cxx_predecls(self, code):
-        code("#include <vector>")
+        code("#include <vector>", add_once=True)
         self.ptype.cxx_predecls(code)
 
     def pybind_predecls(self, code):
-        code("#include <vector>")
+        code("#include <vector>", add_once=True)
         self.ptype.pybind_predecls(code)
 
     def cxx_decl(self, code):
         code("std::vector< ${{self.ptype.cxx_type}} > ${{self.name}};")
+
+
+class OptionalParamDesc(SingleTypeParamDesc):
+    def __init__(self, ptype_str, ptype, *args, **kwargs):
+        if len(args) != 1:
+            raise TypeError(
+                "OptionalParamDesc takes exactly one argument: description."
+            )
+        if ptype_str not in allParams:
+            raise TypeError(
+                "OptionalParam only supports primitive parameter types."
+            )
+        kwargs["default"] = NullOpt
+        super().__init__(ptype_str, ptype, *args, **kwargs)
+
+    def convert(self, value):
+        if isNullOpt(value):
+            return value
+        else:
+            return SingleTypeParamDesc.convert(self, value)
+
+    def cxx_predecls(self, code):
+        code("#include <optional>", add_once=True)
+        self.ptype.cxx_predecls(code)
+
+    def pybind_predecls(self, code):
+        code("#include <optional>", add_once=True)
+        self.ptype.pybind_predecls(code)
+
+    def cxx_decl(self, code):
+        code("std::optional< ${{self.ptype.cxx_type}} > ${{self.name}};")
+
+
+class DictParamDesc(ParamDesc):
+    def __init__(
+        self,
+        key_ptype_str,
+        key_ptype,
+        val_ptype_str,
+        val_ptype,
+        *args,
+        **kwargs,
+    ):
+        if isSimObjectClass(key_ptype) or isSimObjectClass(val_ptype):
+            raise TypeError(
+                f"Can't use a SimObject in '{type(self).__name__}'"
+            )
+
+        super().__init__(*args, **kwargs)
+        self.key_desc = SingleTypeParamDesc(
+            key_ptype_str, key_ptype, desc=self.desc
+        )
+        self.val_desc = SingleTypeParamDesc(
+            val_ptype_str, val_ptype, desc=self.desc
+        )
+
+    @property
+    def ptypes(self):
+        return [self.key_desc.ptype, self.val_desc.ptype]
+
+    # Convert assigned value to appropriate type.  If the RHS is not a
+    # list or tuple, it generates a single-element list.
+    def convert(self, value):
+        if not isinstance(value, dict):
+            raise TypeError("Should be a dict")
+
+        tmp_dict = {
+            self.key_desc.convert(key): self.val_desc.convert(val)
+            for key, val in value.items()
+        }
+
+        return DictParamValue(tmp_dict)
+
+    # Produce a human readable example string that describes
+    # how to set this vector parameter in the absence of a default
+    # value.
+    def example_str(self):
+        k = self.key_desc.example_str()
+        v = self.val_desc.example_str()
+        help_str = "{" + k + ":" + v + ", ...}"
+        return help_str
+
+    # Is the param available to be exposed on the command line
+    def isCmdLineSettable(self):
+        return getattr(
+            self.key_desc.ptype, "cmd_line_settable", False
+        ) and getattr(self.val_desc.ptype, "cmd_line_settable", False)
+
+    # Produce a human readable representation of the value of this vector param.
+    def pretty_print(self, value):
+        if not isinstance(value, dict):
+            raise TypeError("Should be a dict")
+
+        tmp_dict = {
+            self.key_desc.pretty_print(key): self.val_desc.pretty_print(val)
+            for key, val in value.items()
+        }
+
+        return pprint.pformat(tmp_dict)
+
+    # This is a helper function for the new config system
+    def __call__(self, value):
+        return self.convert(value)
+
+    def cxx_predecls(self, code):
+        code("#include <unordered_map>", add_once=True)
+        self.key_desc.ptype.cxx_predecls(code)
+        self.val_desc.ptype.cxx_predecls(code)
+
+    def pybind_predecls(self, code):
+        code("#include <unordered_map>", add_once=True)
+        self.key_desc.ptype.pybind_predecls(code)
+        self.val_desc.ptype.pybind_predecls(code)
+
+    def cxx_decl(self, code):
+        ktype = self.key_desc.ptype.cxx_type
+        vtype = self.val_desc.ptype.cxx_type
+        code("std::unordered_map<${{ktype}}, ${{vtype}}> ${{self.name}};")
 
 
 class ParamFactory:
@@ -438,8 +604,77 @@ class ParamFactory:
         return self.param_desc_class(self.ptype_str, ptype, *args, **kwargs)
 
 
-Param = ParamFactory(ParamDesc)
+class DictParamFactory:
+    """
+    Factory class whose purpose is to store the (descriptor
+    class+key_type+value_type), and to generate the descriptor object
+    once arguments are passed (via the __call__). Last item in the
+    chain of factory classes
+
+    DictParamKeyFactory -> DictParamValueFactory -> DictParamFactory
+    """
+
+    def __init__(self, param_desc_class, key_ptype_str, val_ptype_str):
+        self.param_desc_class = param_desc_class
+        self.key_ptype_str = key_ptype_str
+        self.val_ptype_str = val_ptype_str
+
+    # E.g., DictParam.Int.String({5: "example string"}, "map of widgets")
+    def __call__(self, *args, **kwargs):
+        key_ptype = None
+        val_ptype = None
+        try:
+            key_ptype = allParams[self.key_ptype_str]
+            val_ptype = allParams[self.val_ptype_str]
+        except KeyError:
+            # if name isn't defined yet, assume it's a SimObject, and
+            # try to resolve it later
+            pass
+        return self.param_desc_class(
+            self.key_ptype_str,
+            key_ptype,
+            self.val_ptype_str,
+            val_ptype,
+            *args,
+            **kwargs,
+        )
+
+
+class DictParamValueFactory:
+    """
+    Factory class whose purpose is to store the (descriptor
+    class+key_type), and to generate a new factory object (DictParamFactory)
+    once a value type is given (via the __getattr__)
+    """
+
+    def __init__(self, param_desc_class, key_ptype_str):
+        self.param_desc_class = param_desc_class
+        self.key_ptype_str = key_ptype_str
+
+    def __getattr__(self, val_ptype_str):
+        return DictParamFactory(
+            self.param_desc_class, self.key_ptype_str, val_ptype_str
+        )
+
+
+class DictParamKeyFactory:
+    """
+    Factory class whose purpose is to store the (descriptor class) and to
+    generate a new factory object DictParamValueFactory once a key type is
+    given (via the __getattr__)
+    """
+
+    def __init__(self, param_desc_class):
+        self.param_desc_class = param_desc_class
+
+    def __getattr__(self, key_ptype_str):
+        return DictParamValueFactory(self.param_desc_class, key_ptype_str)
+
+
+Param = ParamFactory(SingleTypeParamDesc)
 VectorParam = ParamFactory(VectorParamDesc)
+OptionalParam = ParamFactory(OptionalParamDesc)
+DictParam = DictParamKeyFactory(DictParamDesc)
 
 #####################################################################
 #
@@ -463,7 +698,7 @@ class String(ParamValue, str):
 
     @classmethod
     def cxx_predecls(self, code):
-        code("#include <string>")
+        code("#include <string>", add_once=True)
 
     def __call__(self, value):
         self = value
@@ -565,7 +800,7 @@ class NumericParamValue(ParamValue):
     @classmethod
     def cxx_ini_predecls(cls, code):
         # Assume that base/str.hh will be included anyway
-        # code('#include "base/str.hh"')
+        # code('#include "base/str.hh"', add_once=True)
         pass
 
     # The default for parsing PODs from an .ini entry is to extract from an
@@ -637,7 +872,7 @@ class CheckedInt(NumericParamValue, metaclass=CheckedIntType):
     @classmethod
     def cxx_predecls(cls, code):
         # most derived types require this, so we just do it here once
-        code('#include "base/types.hh"')
+        code('#include "base/types.hh"', add_once=True)
 
     def getValue(self):
         return int(self.value)
@@ -746,7 +981,7 @@ class Cycles(CheckedInt):
     @classmethod
     def cxx_ini_predecls(cls, code):
         # Assume that base/str.hh will be included anyway
-        # code('#include "base/str.hh"')
+        # code('#include "base/str.hh"', add_once=True)
         pass
 
     @classmethod
@@ -782,7 +1017,7 @@ class Float(ParamValue, float):
 
     @classmethod
     def cxx_ini_predecls(cls, code):
-        code("#include <sstream>")
+        code("#include <sstream>", add_once=True)
 
     @classmethod
     def cxx_ini_parse(self, code, src, dest, ret):
@@ -887,11 +1122,11 @@ class PcCountPair(ParamValue):
 
     @classmethod
     def cxx_predecls(cls, code):
-        code('#include "cpu/probes/pc_count_pair.hh"')
+        code('#include "cpu/probes/pc_count_pair.hh"', add_once=True)
 
     @classmethod
     def pybind_predecls(cls, code):
-        code('#include "cpu/probes/pc_count_pair.hh"')
+        code('#include "cpu/probes/pc_count_pair.hh"', add_once=True)
 
 
 class AddrRange(ParamValue):
@@ -981,18 +1216,18 @@ class AddrRange(ParamValue):
     @classmethod
     def cxx_predecls(cls, code):
         Addr.cxx_predecls(code)
-        code('#include "base/addr_range.hh"')
+        code('#include "base/addr_range.hh"', add_once=True)
 
     @classmethod
     def pybind_predecls(cls, code):
         Addr.pybind_predecls(code)
-        code('#include "base/addr_range.hh"')
+        code('#include "base/addr_range.hh"', add_once=True)
 
     @classmethod
     def cxx_ini_predecls(cls, code):
-        code("#include <sstream>")
-        code("#include <vector>")
-        code('#include "base/types.hh"')
+        code("#include <sstream>", add_once=True)
+        code("#include <vector>", add_once=True)
+        code('#include "base/types.hh"', add_once=True)
 
     @classmethod
     def cxx_ini_parse(cls, code, src, dest, ret):
@@ -1082,7 +1317,7 @@ class Bool(ParamValue):
     @classmethod
     def cxx_ini_predecls(cls, code):
         # Assume that base/str.hh will be included anyway
-        # code('#include "base/str.hh"')
+        # code('#include "base/str.hh"', add_once=True)
         pass
 
     @classmethod
@@ -1095,7 +1330,7 @@ class HostSocket(ParamValue):
 
     @classmethod
     def cxx_predecls(cls, code):
-        code('#include "base/socket.hh"')
+        code('#include "base/socket.hh"', add_once=True)
 
     def __init__(self, value):
         if isinstance(value, HostSocket):
@@ -1144,7 +1379,7 @@ class HostSocket(ParamValue):
 
     @classmethod
     def cxx_ini_predecls(cls, code):
-        code('#include "base/socket.hh"')
+        code('#include "base/socket.hh"', add_once=True)
 
     @classmethod
     def cxx_ini_parse(cls, code, src, dest, ret):
@@ -1182,7 +1417,7 @@ class EthernetAddr(ParamValue):
 
     @classmethod
     def cxx_predecls(cls, code):
-        code('#include "base/inet.hh"')
+        code('#include "base/inet.hh"', add_once=True)
 
     def __init__(self, value):
         if value == NextEthernetAddr:
@@ -1237,7 +1472,7 @@ class IpAddress(ParamValue):
 
     @classmethod
     def cxx_predecls(cls, code):
-        code('#include "base/inet.hh"')
+        code('#include "base/inet.hh"', add_once=True)
 
     def __init__(self, value):
         if isinstance(value, IpAddress):
@@ -1291,7 +1526,7 @@ class IpNetmask(IpAddress):
 
     @classmethod
     def cxx_predecls(cls, code):
-        code('#include "base/inet.hh"')
+        code('#include "base/inet.hh"', add_once=True)
 
     def __init__(self, *args, **kwargs):
         def handle_kwarg(self, kwargs, key, elseVal=None):
@@ -1367,7 +1602,7 @@ class IpWithPort(IpAddress):
 
     @classmethod
     def cxx_predecls(cls, code):
-        code('#include "base/inet.hh"')
+        code('#include "base/inet.hh"', add_once=True)
 
     def __init__(self, *args, **kwargs):
         def handle_kwarg(self, kwargs, key, elseVal=None):
@@ -1488,7 +1723,7 @@ class Time(ParamValue):
 
     @classmethod
     def cxx_predecls(cls, code):
-        code("#include <time.h>")
+        code("#include <time.h>", add_once=True)
 
     def __init__(self, value):
         self.value = parse_time(value)
@@ -1516,7 +1751,7 @@ class Time(ParamValue):
 
     @classmethod
     def cxx_ini_predecls(cls, code):
-        code("#include <time.h>")
+        code("#include <time.h>", add_once=True)
 
     @classmethod
     def cxx_ini_parse(cls, code, src, dest, ret):
@@ -1611,7 +1846,7 @@ class Enum(ParamValue, metaclass=MetaEnum):
 
     @classmethod
     def cxx_predecls(cls, code):
-        code('#include "enums/$0.hh"', cls.__name__)
+        code('#include "enums/$0.hh"', cls.__name__, add_once=True)
 
     @classmethod
     def cxx_ini_parse(cls, code, src, dest, ret):
@@ -1679,7 +1914,7 @@ class TickParamValue(NumericParamValue):
 
     @classmethod
     def cxx_predecls(cls, code):
-        code('#include "base/types.hh"')
+        code('#include "base/types.hh"', add_once=True)
 
     def __call__(self, value):
         self.__init__(value)
@@ -1690,7 +1925,7 @@ class TickParamValue(NumericParamValue):
 
     @classmethod
     def cxx_ini_predecls(cls, code):
-        code("#include <sstream>")
+        code("#include <sstream>", add_once=True)
 
     # Ticks are expressed in seconds in JSON files and in plain
     # Ticks in .ini files.  Switch based on a config flag
@@ -1887,12 +2122,12 @@ class Temperature(ParamValue):
 
     @classmethod
     def cxx_predecls(cls, code):
-        code('#include "base/temperature.hh"')
+        code('#include "base/temperature.hh"', add_once=True)
 
     @classmethod
     def cxx_ini_predecls(cls, code):
         # Assume that base/str.hh will be included anyway
-        # code('#include "base/str.hh"')
+        # code('#include "base/str.hh"', add_once=True)
         pass
 
     @classmethod
@@ -1937,7 +2172,7 @@ class NetworkBandwidth(float, ParamValue):
 
     @classmethod
     def cxx_ini_predecls(cls, code):
-        code("#include <sstream>")
+        code("#include <sstream>", add_once=True)
 
     @classmethod
     def cxx_ini_parse(self, code, src, dest, ret):
@@ -1976,7 +2211,7 @@ class MemoryBandwidth(float, ParamValue):
 
     @classmethod
     def cxx_ini_predecls(cls, code):
-        code("#include <sstream>")
+        code("#include <sstream>", add_once=True)
 
     @classmethod
     def cxx_ini_parse(self, code, src, dest, ret):
@@ -2039,6 +2274,35 @@ NULL = NullSimObject()
 
 def isNullPointer(value):
     return isinstance(value, NullSimObject)
+
+
+class NullOptT(metaclass=Singleton):
+    _name = "NullOpt"
+
+    def __call__(cls):
+        return cls
+
+    def ini_str(self):
+        return "NullOpt"
+
+    def unproxy(self, base):
+        return self
+
+    def __str__(self):
+        return self._name
+
+    def config_value(self):
+        return None
+
+    def getValue(self):
+        return None
+
+
+NullOpt = NullOptT()
+
+
+def isNullOpt(value):
+    return isinstance(value, NullOptT)
 
 
 # Some memory range specifications use this as a default upper bound.
@@ -2484,6 +2748,8 @@ def clear():
 __all__ = [
     "Param",
     "VectorParam",
+    "OptionalParam",
+    "DictParam",
     "Enum",
     "ScopedEnum",
     "Bool",
@@ -2527,6 +2793,7 @@ __all__ = [
     "Time",
     "NextEthernetAddr",
     "NULL",
+    "NullOpt",
     "Port",
     "RequestPort",
     "ResponsePort",

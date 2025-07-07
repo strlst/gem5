@@ -1,7 +1,7 @@
 # Copyright 2004-2006 The Regents of The University of Michigan
 # Copyright 2010-20013 Advanced Micro Devices, Inc.
 # Copyright 2013 Mark D. Hill and David A. Wood
-# Copyright 2017-2020 ARM Limited
+# Copyright 2017-2020, 2025 Arm Limited
 # Copyright 2021 Google, Inc.
 #
 # The license below extends only to copyright in the software and shall
@@ -71,7 +71,7 @@ params = list(
 )
 ports = sim_object._ports.local
 try:
-    ptypes = [p.ptype for p in params]
+    ptypes = [single_type for p in params for single_type in p.ptypes]
 except:
     print(sim_object)
     print(params)
@@ -168,7 +168,7 @@ code(
 # the normal Param mechanism; we slip them in here (needed
 # predecls now, actual declarations below)
 if sim_object == SimObject:
-    code("""#include <string>""")
+    code("""#include <string>""", add_once=True)
 
 cxx_class = CxxClass(
     sim_object._value_dict["cxx_class"],
@@ -186,12 +186,12 @@ for port in ports.values():
 code()
 
 if sim_object._base:
-    code('#include "params/${{sim_object._base.type}}.hh"')
+    code('#include "params/${{sim_object._base.type}}.hh"', add_once=True)
     code()
 
 for ptype in ptypes:
     if issubclass(ptype, Enum):
-        code('#include "enums/${{ptype.__name__}}.hh"')
+        code('#include "enums/${{ptype.__name__}}.hh"', add_once=True)
         code()
 
 code("namespace gem5")
