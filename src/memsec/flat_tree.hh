@@ -30,8 +30,11 @@ namespace gem5
 template<typename T> class FlatTree
 {
   public:
-    FlatTree(const uint64_t tree_height, const uint64_t packing_factor)
-        : tree_height(tree_height), packing_factor(packing_factor)
+    FlatTree(const uint64_t tree_height,
+        const uint64_t packing_factor,
+        const uint64_t node_bytes)
+        : tree_height(tree_height), packing_factor(packing_factor),
+          node_bytes(node_bytes)
     {
         // we use the known formula n = (p^(h + 1) - 1) / (p - 1) for the
         // node count
@@ -46,13 +49,16 @@ template<typename T> class FlatTree
     void update(Addr address, T data)
     {
         assert(address < max_address);
-        tree.at(address) = data;
+        Addr logical_address = address / node_bytes;
+        tree.at(logical_address) = data;
     }
 
+    // emulate memory lookup (for byte addressed memory)
     T& lookup(Addr address)
     {
         assert(address < max_address);
-        return tree.at(address);
+        Addr logical_address = address / node_bytes;
+        return tree.at(logical_address);
     }
 
     Addr child_address(Addr address, uint64_t child)
@@ -63,13 +69,15 @@ template<typename T> class FlatTree
         return address * packing_factor + child;
     }
 
-    uint64_t child_offset(Addr address) {
+    uint64_t child_offset(Addr address)
+    {
         // variant for power of 2 packing factor
         // return address & (packing_factor - 1);
         return address % packing_factor;
     }
 
-    Addr parent_address(Addr address) {
+    Addr parent_address(Addr address)
+    {
         // variant for power of 2 packing factor
         // return address >> packing_factor;
         return address / packing_factor;
@@ -79,14 +87,13 @@ template<typename T> class FlatTree
 
     Addr get_max_address() { return max_address; }
 
-    size_t get_size() {
-        return tree.size();
-    }
+    size_t get_size() { return tree.size(); }
 
   private:
     std::vector<T> tree;
     uint64_t tree_height;
     uint64_t packing_factor;
+    uint64_t node_bytes;
     Addr max_address;
 };
 

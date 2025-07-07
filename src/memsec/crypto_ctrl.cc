@@ -88,7 +88,9 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
     tree_node_count =
         std::pow(packing_factor, int_tree_height + 1) / (packing_factor - 1);
     leaf_node_count = std::pow(packing_factor, int_tree_height);
-    region_integrity_bytes = (tree_node_count - 1) * tree_node_bytes;
+    // reserve extra space for alignment
+    region_integrity_bytes =
+        std::exp2(std::ceil(std::log2(tree_node_count))) * tree_node_bytes;
     region_data_bytes = total_memory_bytes - region_integrity_bytes;
 
     // assign memory regions
@@ -97,8 +99,8 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
     region_integrity = AddrRange(region_data.end(),
         region_data.end() + region_integrity_bytes / bytes_per_address);
 
-    integrity_tree.reset(
-        new FlatTree<BMTNode>(int_tree_height, packing_factor));
+    integrity_tree.reset(new FlatTree<BMTNode>(int_tree_height,
+        packing_factor, tree_node_bytes));
     DPRINTF(CryptoCtrl, "updated %d elements\n", integrity_tree->get_size());
 
     DPRINTF(CryptoCtrl, "Created crypto controller with properties\n");
@@ -140,6 +142,14 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
         region_integrity.start(),
         region_integrity.start() + integrity_tree->get_max_address() - 1,
         std::log2(integrity_tree->get_max_address()));
+    AddrRange region_leaves = AddrRange(
+        region_integrity.start() + (tree_node_count - leaf_node_count),
+        region_integrity.end());
+    DPRINTF(CryptoCtrl,
+        "\t\t\t%s memory region (leaves, %d address bits "
+        "required)\n",
+        region_leaves.to_string(),
+        std::log2(region_leaves.end() - region_leaves.start()));
 
     // sanity check
     assert(region_data_bytes + region_integrity_bytes <= total_memory_bytes);
@@ -343,19 +353,20 @@ CryptoCtrl::CryptoWrite(PacketPtr pkt)
     // to get a leaf node address from a data address, we need to convert
     // appropriately
     // leaf i = address / packing_factor, counter c = address % packing_factor
-    uint64_t node_index =
-        (pkt->getAddr() / bytes_per_address) / packing_factor;
-    uint64_t offset = (pkt->getAddr() / bytes_per_address) % packing_factor;
+    uint64_t node_index = pkt->getAddr() / packing_factor;
+    uint64_t offset = (pkt->getAddr() / packing_factor) % packing_factor;
     // we need to offset the node index to the region where the leaves
     // are stored
-    Addr node_address = node_index + tree_node_count - leaf_node_count;
+    Addr node_address = node_index + (tree_node_count - leaf_node_count);
     Addr parent_address;
 
     // TODO: implement accurate timing of this operation and schedule
     // memory operations
     DPRINTF(CryptoCtrl,
-        "write on data block 0x%x stored at node %d, offset %d\n",
-        pkt->getAddr(), node_index, offset);
+        "write on data block 0x%x (block address 0x%x) stored at node %d "
+        "(hex 0x%x), offset %d\n",
+        pkt->getAddr(), pkt->getAddr() / bytes_per_address, node_index,
+        node_index, offset);
 
     // recalculate integrity values up the tree
     do {
@@ -371,7 +382,9 @@ CryptoCtrl::CryptoWrite(PacketPtr pkt)
             "%s\n",
             node_address, offset, parent_address, node.to_string());
         node_address = parent_address;
-    } while (node_address != 0);
+        // TODO: when changing from the flat tree, we need to parameterize
+        // the appropriate address
+    } while (node_address > 0x1);
 }
 
 bool
