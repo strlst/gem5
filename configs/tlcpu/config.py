@@ -48,15 +48,77 @@ def parse_args():
         help="flag to enable/disable existence of an L3 cache",
     )
     parser.add_argument(
+        "--ooo",
+        action=argparse.BooleanOptionalAction,
+        help="flag to enable/disable use of O3 CPU model",
+    )
+    parser.add_argument(
         "--memsec",
         action=argparse.BooleanOptionalAction,
         help="flag to enable/disable memory security subsystem used for confidentiality and integrity",
     )
     parser.add_argument(
-        "--ooo",
-        action=argparse.BooleanOptionalAction,
-        help="flag to enable/disable use of O3 CPU model",
+        "--crypto-aes-block-bits",
+        default="128",
+        type=int,
+        help="AES block size in bits (default: 128)",
     )
+    # default parameters sourced from
+    # https://ieeexplore.ieee.org/document/7019004
+    parser.add_argument(
+        "--crypto-aes-enc-cycles",
+        default="336",
+        help="AES encryption delay in cycles (default: 336)",
+    )
+    parser.add_argument(
+        "--crypto-aes-dec-cycles",
+        default="216",
+        type=int,
+        help="AES decryption delay in cycles (default: 216)",
+    )
+    parser.add_argument(
+        "--crypto-aes-enc-ii",
+        default="336",
+        type=int,
+        help="AES encryption initiation interval in cycles (default: 336)",
+    )
+    parser.add_argument(
+        "--crypto-aes-dec-ii",
+        default="216",
+        type=int,
+        help="AES decryption initiation interval in cycles (default: 216)",
+    )
+    parser.add_argument(
+        "--crypto-mac-cycles",
+        default="200",
+        type=int,
+        help="MAC operation delay in cycles (default: 200)",
+    )
+    parser.add_argument(
+        "--crypto-mac-ii",
+        default="200",
+        type=int,
+        help="MAC operation initiation interval in cycles (default: 200)",
+    )
+    parser.add_argument(
+        "--crypto-counter-bits",
+        default="56",
+        type=int,
+        help="Amount of bits per AES counter value (default: 56)",
+    )
+    parser.add_argument(
+        "--crypto-mac-bits",
+        default="56",
+        type=int,
+        help="Amount of bits per MAC value (default: 64)",
+    )
+    parser.add_argument(
+        "--crypto-packing-factor",
+        default="8",
+        type=int,
+        help="Amount counters to group with one MAC for Intel SGX style integrity trees (default: 8)",
+    )
+
     return parser.parse_args()
 
 

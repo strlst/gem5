@@ -21,7 +21,7 @@ from ..boards.abstract_board import AbstractBoard
 from .abstract_memory_system import AbstractMemorySystem
 
 
-def config_ds3(mem_type: str, num_chnls: int) -> Tuple[str, str]:
+def config_ds3(mem_type: str, num_chnls: int) -> Tuple[str, str, list]:
     """
     This function creates a config file that will be used to create a memory
     controller of type DRAMSim3. It stores the config file in ``/tmp/`` directory.
@@ -76,7 +76,7 @@ class DRAMSim3MemCtrl(DRAMsim3):
     """
     A DRAMSim3 Memory Controller.
 
-    The class serves as a SimObject object wrapper, utiliszing the DRAMSim3
+    The class serves as a SimObject object wrapper, utilizing the DRAMSim3
     configuratons.
     """
 

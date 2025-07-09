@@ -38,7 +38,6 @@ class CryptoReadEvent : public Event
         // process packet by using callback
         ctrl->CryptoRead(pkt);
     };
-
 };
 
 }

@@ -2,7 +2,6 @@
 
 #include <cmath>
 #include <cstdint>
-#include <queue>
 
 #include "base/trace.hh"
 #include "base/types.hh"
@@ -22,8 +21,8 @@ formattedPacket(PacketPtr pkt)
     ss << "pkt(";
     ss << "addr=0x" << std::hex << unsigned(pkt->getAddr());
     ss << ", cmd=" << pkt->cmdString();
-    ss << ", id=" << unsigned(pkt->requestorId());
     ss << ", size=" << unsigned(pkt->getSize());
+    ss << ", read=" << unsigned(pkt->isRead());
     ss << ")";
     return ss.str();
 }
@@ -53,61 +52,27 @@ createPktFromPkt(PacketPtr pkt, MemCmd cmd)
 
 CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
     : ClockedObject(params), aes_enc_ready(0), aes_dec_ready(0),
-      aes_block_bits(params.aes_block_bits),
       aes_block_bytes(params.aes_block_bits / 8),
       aes_enc_cycles(params.aes_enc_cycles),
       aes_dec_cycles(params.aes_dec_cycles), aes_enc_ii(params.aes_enc_ii),
       aes_dec_ii(params.aes_dec_ii), counter_bits(params.counter_bits),
       counter_bytes(params.counter_bits / 8), mac_bits(params.mac_bits),
       mac_bytes(params.mac_bits / 8), packing_factor(params.packing_factor),
-      bytes_per_address(params.bytes_per_address), stats(this),
+      tree_height(params.tree_height),
+      tree_node_bytes(params.tree_node_bytes),
+      total_memory_addresses(params.total_memory_addresses),
+      bus_bytes(params.bus_bytes), range_total(params.range_total),
+      range_data(params.range_data), range_integrity(params.range_integrity),
+      range_leaves(params.range_leaves), stats(this),
       cpuPort(params.name + ".cpu_side_port", this),
       memPort(params.name + ".mem_side_port", this)
 {
-    // make some calculations for automatic integrity tree creation
-    // not all fields are really needed, but for convenience they remain
-    total_memory_addresses = params.range.size();
-    total_memory_blocks =
-        total_memory_addresses * bytes_per_address / aes_block_bytes;
-    total_memory_bytes = total_memory_addresses * bytes_per_address;
-    total_memory_bits = total_memory_bytes * 8;
-    tree_node_bits = counter_bits * packing_factor + mac_bits;
-    tree_node_bytes = tree_node_bits / 8;
-
-    // calculate integrity tree parameters
-    // this formula is derived by hand
-    uint64_t int_tree_height =
-        (uint64_t)(std::ceil(
-            std::log2((total_memory_addresses * (packing_factor - 1) +
-                          tree_node_bytes) /
-                (aes_block_bytes * (packing_factor - 1) + tree_node_bytes)) /
-            std::log2(packing_factor))) -
-        1;
-
-    // calculate region sizes in bytes
-    tree_node_count =
-        std::pow(packing_factor, int_tree_height + 1) / (packing_factor - 1);
-    leaf_node_count = std::pow(packing_factor, int_tree_height);
-    // reserve extra space for alignment
-    region_integrity_bytes =
-        std::exp2(std::ceil(std::log2(tree_node_count))) * tree_node_bytes;
-    region_data_bytes = total_memory_bytes - region_integrity_bytes;
-
-    // assign memory regions
-    region_data = AddrRange(params.range.start(),
-        params.range.start() + region_data_bytes / bytes_per_address);
-    region_integrity = AddrRange(region_data.end(),
-        region_data.end() + region_integrity_bytes / bytes_per_address);
-
-    integrity_tree.reset(new FlatTree<BMTNode>(int_tree_height,
-        packing_factor, tree_node_bytes));
-    DPRINTF(CryptoCtrl, "updated %d elements\n", integrity_tree->get_size());
-
+    total_memory_bytes = params.total_memory_addresses * params.bus_bytes;
     DPRINTF(CryptoCtrl, "Created crypto controller with properties\n");
     DPRINTF(CryptoCtrl, "\t\t\t%d total memory bytes (%f MiB)\n",
         total_memory_bytes, (double)total_memory_bytes / 1024.f / 1024.f);
     DPRINTF(CryptoCtrl, "\t\t\t%d aes block bits (%d bytes)\n",
-        aes_block_bits, aes_block_bytes);
+        aes_block_bytes * 8, aes_block_bytes);
     DPRINTF(CryptoCtrl, "\t\t\t%d aes encryption cycles (%d ii)\n",
         aes_enc_cycles, aes_enc_ii);
     DPRINTF(CryptoCtrl, "\t\t\t%d aes decryption cycles (%d ii)\n",
@@ -117,51 +82,38 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
     DPRINTF(CryptoCtrl, "\t\t\t%d mac bits (%d bytes)\n", mac_bits, mac_bytes);
     DPRINTF(CryptoCtrl,
         "\t\t\t%d integrity tree node bits (%d bytes, %d packing factor)\n",
-        tree_node_bits, tree_node_bytes, packing_factor);
-    DPRINTF(CryptoCtrl, "\t\t\t%d integrity tree bytes (%f MiB, %d height)\n",
-        region_integrity_bytes,
-        (double)region_integrity_bytes / 1024.f / 1024.f, int_tree_height);
+        tree_node_bytes * 8, tree_node_bytes, packing_factor);
     DPRINTF(CryptoCtrl,
-        "\t\t\t%d integrity tree nodes (%d leaves, 0x%x max addr)\n",
-        tree_node_count,
-        leaf_node_count,
-        integrity_tree->get_max_address());
-    DPRINTF(CryptoCtrl, "\t\t\t%s memory region (total)\n",
-        params.range.to_string());
+        "\t\t\t%s memory region (total, %d address bits required)\n",
+        range_total.to_string(),
+        std::log2(range_total.end() - range_total.start()));
     DPRINTF(CryptoCtrl,
         "\t\t\t%s memory region (data, %d address bits required)\n",
-        region_data.to_string(),
-        std::log2(region_data.end() - region_data.start()));
+        range_data.to_string(),
+        std::log2(range_data.end() - range_data.start()));
     DPRINTF(CryptoCtrl,
         "\t\t\t%s memory region (integrity, %d address bits required)\n",
-        region_integrity.to_string(),
-        std::log2(region_integrity.end() - region_integrity.start()));
-    DPRINTF(CryptoCtrl,
-        "\t\t\t[0x%x:0x%x] actual region (integrity, %d address bits "
-        "required)\n",
-        region_integrity.start(),
-        region_integrity.start() + integrity_tree->get_max_address() - 1,
-        std::log2(integrity_tree->get_max_address()));
-    AddrRange region_leaves = AddrRange(
-        region_integrity.start() + (tree_node_count - leaf_node_count),
-        region_integrity.end());
+        range_integrity.to_string(),
+        std::log2(range_integrity.end() - range_integrity.start()));
     DPRINTF(CryptoCtrl,
         "\t\t\t%s memory region (leaves, %d address bits "
         "required)\n",
-        region_leaves.to_string(),
-        std::log2(region_leaves.end() - region_leaves.start()));
+        range_leaves.to_string(),
+        std::log2(range_leaves.end() - range_leaves.start()));
 
     // sanity check
-    assert(region_data_bytes + region_integrity_bytes <= total_memory_bytes);
-    assert(region_data_bytes > region_integrity_bytes);
-    assert(region_data.start() < region_data.end());
-    assert(region_data.end() == region_integrity.start());
-    assert(region_integrity.start() < region_integrity.end());
-    assert(params.range.end() >= params.range.start() +
-            (region_data_bytes + region_integrity_bytes) / bytes_per_address);
-    assert(params.range.start() == region_data.start());
-    assert(params.range.end() >= region_integrity.end());
-    assert(region_integrity.size() < region_data.size());
+    assert(range_data.size() + range_integrity.size() <= range_total.size());
+    assert(range_data.size() > range_integrity.size());
+    assert(range_data.start() < range_data.end());
+    assert(range_data.end() == range_integrity.start());
+    assert(range_integrity.start() < range_integrity.end());
+    assert(range_leaves.start() < range_leaves.end());
+    assert(params.range_total.end() >= params.range_total.start() +
+            (range_data.size() + range_integrity.size()) / params.bus_bytes);
+    assert(params.range_total.start() == range_data.start());
+    assert(params.range_total.end() >= range_integrity.end());
+    assert(range_integrity.size() < range_data.size());
+    assert(range_leaves.size() < range_integrity.size());
 }
 
 Port&
@@ -299,13 +251,21 @@ CryptoCtrl::MemSidePort::recvRangeChange()
 }
 
 bool
-CryptoCtrl::handleRequest(PacketPtr pkt, bool encrypt)
+CryptoCtrl::handleRequest(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "handleRequest %s\n", formattedPacket(pkt));
     if (pkt->isRead()) {
+        // keep track of reads
         stats.reads++;
+        // immediately forward packet to mem port
+        // (reads don't require processing)
+        memPort.sendPacket(pkt);
     } else {
+        // keep track of writes
         stats.writes++;
+
+        // this would be the correct time to manipulate a packer during a write
+        // AESEncrypt(pkt);
         /*
         // assume multiples of 64 bytes
         const uint64_t mask = 0xFFFFFFFFFFFFFFFF;
@@ -318,9 +278,7 @@ CryptoCtrl::handleRequest(PacketPtr pkt, bool encrypt)
             }
         }
         */
-    }
 
-    if (encrypt) {
         // consider when the incoming request becomes servicable
         // if the unit might be busy
         Tick start = curTick() > aes_enc_ready ? curTick() : aes_enc_ready;
@@ -332,9 +290,8 @@ CryptoCtrl::handleRequest(PacketPtr pkt, bool encrypt)
         // requests
         aes_enc_ready = start + (iterations - 1) * aes_enc_ii;
 
+        // schedule future event, when the crypto unit finished encrypting
         schedule(new CryptoWriteEvent(this, pkt), end);
-    } else {
-        schedule(new CryptoWriteEvent(this, pkt), curTick());
     }
 
     return true;
@@ -345,76 +302,14 @@ CryptoCtrl::CryptoWrite(PacketPtr pkt)
 {
     // for now ignore return value
     memPort.sendPacket(pkt);
-
-    // next we save the new counter and
-    // update the integrity tree along the path
-    // NOTE: assume addresses are byte addresses and already aligned
-    // on DRAM bus width
-    // to get a leaf node address from a data address, we need to convert
-    // appropriately
-    // leaf i = address / packing_factor, counter c = address % packing_factor
-    uint64_t node_index = pkt->getAddr() / packing_factor;
-    uint64_t offset = (pkt->getAddr() / packing_factor) % packing_factor;
-    // we need to offset the node index to the region where the leaves
-    // are stored
-    Addr node_address = node_index + (tree_node_count - leaf_node_count);
-    Addr parent_address;
-
-    // TODO: implement accurate timing of this operation and schedule
-    // memory operations
-    DPRINTF(CryptoCtrl,
-        "write on data block 0x%x (block address 0x%x) stored at node %d "
-        "(hex 0x%x), offset %d\n",
-        pkt->getAddr(), pkt->getAddr() / bytes_per_address, node_index,
-        node_index, offset);
-
-    // recalculate integrity values up the tree
-    do {
-        auto& node = integrity_tree->lookup(node_address);
-        parent_address = integrity_tree->parent_address(node_address);
-        offset = integrity_tree->child_offset(node_address);
-        auto& parent = integrity_tree->lookup(parent_address);
-        node.increment(offset);
-        parent.increment(offset);
-        node.update_mac(parent.counters.at(parent_address % packing_factor));
-        DPRINTF(CryptoCtrl,
-            "tree update @ address 0x%x, offset 0x%x, parent address 0x%x, "
-            "%s\n",
-            node_address, offset, parent_address, node.to_string());
-        node_address = parent_address;
-        // TODO: when changing from the flat tree, we need to parameterize
-        // the appropriate address
-    } while (node_address > 0x1);
 }
 
 bool
-CryptoCtrl::handleResponse(PacketPtr pkt, bool decrypt)
+CryptoCtrl::handleResponse(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "handleResponse %s\n", formattedPacket(pkt));
 
-    /*
-    // print data
-    uint8_t* byte = pkt->getPtr<uint8_t>();
-    for (int i = 0; i < pkt->getSize(); i++) {
-        printf("%.02x", *(byte++));
-    }
-    printf("\n");
-    */
-    /*
-    // assume multiples of 64 bytes
-    const uint64_t mask = 0xFFFFFFFFFFFFFFFF;
-    if (pkt->hasRespData()) {
-        DPRINTF(CryptoCtrl, "XORing read data at %d %d %d\n", pkt->getAddr(),
-            pkt->hasData(), pkt->hasRespData());
-        uint64_t* data = pkt->getPtr<uint64_t>();
-        for (int i = 0; i < pkt->getSize() / 8; i++) {
-            *data = (*data) ^ mask;
-            data++;
-        }
-    }
-    */
-
-    if (decrypt) {
+    if (pkt->isRead()) {
         // consider when the incoming request becomes servicable,
         // if the unit might be busy
         Tick start = curTick() > aes_dec_ready ? curTick() : aes_dec_ready;
@@ -426,11 +321,24 @@ CryptoCtrl::handleResponse(PacketPtr pkt, bool decrypt)
         // requests
         aes_dec_ready = start + (iterations - 1) * aes_dec_ii;
 
+        // if data should be processed, now would be the time to process it
+        // AESDecrypt(pkt);
+        /*
+        // print data
+        uint8_t* byte = pkt->getPtr<uint8_t>();
+        for (int i = 0; i < pkt->getSize(); i++) {
+            printf("%.02x", *(byte++));
+        }
+        printf("\n");
+        */
+
         //schedule(new AESDecryptEvent(this, pkt), clockEdge(delay));
         schedule(new CryptoReadEvent(this, pkt), end);
     } else {
-        schedule(new CryptoReadEvent(this, pkt), curTick());
+        // directly forward the data
+        cpuPort.sendPacket(pkt);
     }
+
 
     return true;
 }

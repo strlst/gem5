@@ -9,8 +9,6 @@
 #include "base/stats/group.hh"
 #include "mem/packet.hh"
 #include "mem/port.hh"
-#include "memsec/bmt_node.hh"
-#include "memsec/flat_tree.hh"
 #include "params/CryptoCtrl.hh"
 #include "sim/clocked_object.hh"
 
@@ -48,7 +46,7 @@ class CryptoCtrl : public ClockedObject
     uint64_t packing_factor;
     uint64_t bytes_per_address;
 
-    uint64_t tree_node_bits;
+    uint64_t tree_height;
     uint64_t tree_node_bytes;
     uint64_t tree_node_count;
     uint64_t leaf_node_count;
@@ -57,17 +55,14 @@ class CryptoCtrl : public ClockedObject
 
     uint64_t total_memory_addresses;
     uint64_t total_memory_blocks;
-    uint64_t total_memory_bits;
     uint64_t total_memory_bytes;
 
-    AddrRange region_data;
-    uint64_t region_data_bytes;
+    uint64_t bus_bytes;
 
-    AddrRange region_integrity;
-    uint64_t region_integrity_bytes;
-
-    // create integrity tree with simple nodes
-    std::unique_ptr<FlatTree<BMTNode>> integrity_tree;
+    AddrRange range_total;
+    AddrRange range_data;
+    AddrRange range_integrity;
+    AddrRange range_leaves;
 
     struct PktStats : public Group
     {
@@ -107,6 +102,31 @@ class CryptoCtrl : public ClockedObject
         }
     } stats;
 
+    class MetadataCacheSidePort : public RequestPort
+    {
+      private:
+        CryptoCtrl* owner;
+
+        // store packets for retries
+        std::queue<PacketPtr> failedPackets;
+
+      public:
+        MetadataCacheSidePort(const std::string& name, CryptoCtrl* owner)
+            : RequestPort(name), owner(owner)
+        {
+        }
+
+        // called by the crypto controller
+        bool sendPacket(PacketPtr pkt);
+
+      protected:
+        // called by the mem side controller when responding
+        bool recvTimingResp(PacketPtr pkt) override;
+        // called by the mem side controller when responding
+        void recvReqRetry() override;
+        void recvRangeChange() override;
+    };
+
     class CPUSidePort : public ResponsePort
     {
       private:
@@ -121,38 +141,20 @@ class CryptoCtrl : public ClockedObject
         {
         }
 
+        // called by the crypto controller
         bool sendPacket(PacketPtr pkt);
         AddrRangeList getAddrRanges() const override;
-
       protected:
         Tick recvAtomic(PacketPtr pkt) override
         {
             panic("recvAtomic unimpl.");
         }
 
-        /**
-         * Receive a functional request packet from the request port.
-         * Performs a "debug" access updating/reading the data in place.
-         *
-         * @param packet the requestor sent
-         */
+        // called by the cpu side controller
         void recvFunctional(PacketPtr pkt) override;
-
-        /**
-         * Receive a timing request from the request port.
-         *
-         * @param the packet that the requestor sent
-         * @return whether this object can consume the packet. If false, we
-         *         will call sendRetry() when we can try to receive this
-         *         request again.
-         */
+        // called by the cpu side controller
         bool recvTimingReq(PacketPtr pkt) override;
-
-        /**
-         * Called by the request port if sendTimingResp was called on this
-         * response port (causing recvTimingResp to be called on the request
-         * port) and was unsuccesful.
-         */
+        // called by the cpu side controller
         void recvRespRetry() override;
     };
 
@@ -171,28 +173,14 @@ class CryptoCtrl : public ClockedObject
         {
         }
 
+        // called by the cpu side controller to actually transmit packets
         bool sendPacket(PacketPtr pkt);
 
       protected:
-        /**
-         * Receive a timing response from the response port.
-         */
+        // called by the mem side controller when responding
         bool recvTimingResp(PacketPtr pkt) override;
-
-        /**
-         * Called by the response port if sendTimingReq was called on this
-         * request port (causing recvTimingReq to be called on the responder
-         * port) and was unsuccesful.
-         */
+        // called by the mem side controller when responding
         void recvReqRetry() override;
-
-        /**
-         * Called to receive an address range change from the peer responder
-         * port. The default implementation ignores the change and does
-         * nothing. Override this function in a derived class if the owner
-         * needs to be aware of the address ranges, e.g. in an
-         * interconnect component like a bus.
-         */
         void recvRangeChange() override;
     };
 
@@ -203,7 +191,7 @@ class CryptoCtrl : public ClockedObject
      * @return true if we can handle the request this cycle, false if the
      *         requestor needs to retry later
      */
-    bool handleRequest(PacketPtr pkt, bool encrypt = true);
+    bool handleRequest(PacketPtr pkt);
 
     /**
      * Handle the respone from the memory side
@@ -212,7 +200,7 @@ class CryptoCtrl : public ClockedObject
      * @return true if we can handle the response this cycle, false if the
      *         responder needs to retry later
      */
-    bool handleResponse(PacketPtr pkt, bool decrypt = true);
+    bool handleResponse(PacketPtr pkt);
 
     /**
      * Handle a packet functionally. Update the data on a write and get the
