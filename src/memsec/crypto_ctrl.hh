@@ -72,10 +72,14 @@ class CryptoCtrl : public ClockedObject
         statistics::Scalar cpuTotalCountRecv;
         statistics::Scalar memTotalCountSend;
         statistics::Scalar memTotalCountRecv;
+        statistics::Scalar mdcacheTotalCountSend;
+        statistics::Scalar mdcacheTotalCountRecv;
         statistics::Scalar cpuFailuresCountSend;
         statistics::Scalar cpuRetryCountSend;
         statistics::Scalar memFailuresCountSend;
         statistics::Scalar memRetryCountSend;
+        statistics::Scalar mdcacheFailuresCountSend;
+        statistics::Scalar mdcacheRetryCountSend;
         PktStats(Group* parent)
             : Group(parent),
               ADD_STAT(reads, statistics::units::Count::get(),
@@ -90,6 +94,10 @@ class CryptoCtrl : public ClockedObject
                   "amount of sent packets"),
               ADD_STAT(memTotalCountRecv, statistics::units::Count::get(),
                   "amount of received packets"),
+              ADD_STAT(mdcacheTotalCountSend, statistics::units::Count::get(),
+                  "amount of sent packets"),
+              ADD_STAT(mdcacheTotalCountRecv, statistics::units::Count::get(),
+                  "amount of received packets"),
               ADD_STAT(cpuFailuresCountSend, statistics::units::Count::get(),
                   "amount of response packets which failed to send"),
               ADD_STAT(cpuRetryCountSend, statistics::units::Count::get(),
@@ -97,6 +105,11 @@ class CryptoCtrl : public ClockedObject
               ADD_STAT(memFailuresCountSend, statistics::units::Count::get(),
                   "amount of request packets which failed to send"),
               ADD_STAT(memRetryCountSend, statistics::units::Count::get(),
+                  "amount of request packets sent as a result of a retry"),
+              ADD_STAT(mdcacheFailuresCountSend,
+                  statistics::units::Count::get(),
+                  "amount of request packets which failed to send"),
+              ADD_STAT(mdcacheRetryCountSend, statistics::units::Count::get(),
                   "amount of request packets sent as a result of a retry")
         {
         }
@@ -223,10 +236,13 @@ class CryptoCtrl : public ClockedObject
      */
     void sendRangeChange();
 
-    /// Instantiation of the CPU-side ports
+    // instantiation of the CPU-side ports
+    MetadataCacheSidePort mdcachePort;
+
+    // instantiation of the CPU-side ports
     CPUSidePort cpuPort;
 
-    /// Instantiation of the memory-side port
+    // instantiation of the memory-side port
     MemSidePort memPort;
 
   public:

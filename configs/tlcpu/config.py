@@ -118,6 +118,11 @@ def parse_args():
         type=int,
         help="Amount counters to group with one MAC for Intel SGX style integrity trees (default: 8)",
     )
+    parser.add_argument(
+        "--metadata-cache-size",
+        default="16KiB",
+        help="Metadata cache size (default: 16KiB)",
+    )
 
     return parser.parse_args()
 

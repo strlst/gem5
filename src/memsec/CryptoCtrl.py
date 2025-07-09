@@ -41,6 +41,9 @@ class CryptoCtrl(ClockedObject):
     # mem side port, connected to the memory controller
     mem_side_port = RequestPort("memory side port")
 
+    # metadata cache side port, connected to the special metadata cache
+    metadata_cache_side_port = RequestPort("metadata cache side port")
+
     # memory range, usually covering the whole memory controller range
     range_total = Param.AddrRange("total memory range")
     range_data = Param.AddrRange("data region memory range")

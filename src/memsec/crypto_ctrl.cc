@@ -64,6 +64,7 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
       bus_bytes(params.bus_bytes), range_total(params.range_total),
       range_data(params.range_data), range_integrity(params.range_integrity),
       range_leaves(params.range_leaves), stats(this),
+      mdcachePort(params.name + ".mdcache_side_port", this),
       cpuPort(params.name + ".cpu_side_port", this),
       memPort(params.name + ".mem_side_port", this)
 {
@@ -126,10 +127,70 @@ CryptoCtrl::getPort(const std::string& if_name, PortID idx)
         return memPort;
     } else if (if_name == "cpu_side_port") {
         return cpuPort;
+    } else if (if_name == "metadata_cache_side_port") {
+        return mdcachePort;
     } else {
         // pass it along to our super class
         return SimObject::getPort(if_name, idx);
     }
+}
+
+bool
+CryptoCtrl::MetadataCacheSidePort::sendPacket(PacketPtr pkt)
+{
+    owner->stats.mdcacheTotalCountSend++;
+
+    // make sure we cannot miss packets
+    // don't even attempt a timing req if the failure queue is not empty
+    bool success = failedPackets.empty() && sendTimingReq(pkt);
+    if (!success) {
+        failedPackets.push(pkt);
+        ++owner->stats.mdcacheFailuresCountSend;
+    }
+    DPRINTF(CryptoCtrl, "sendPacket %s, success=%d\n", formattedPacket(pkt),
+        success);
+
+    return success;
+}
+
+bool
+CryptoCtrl::MetadataCacheSidePort::recvTimingResp(PacketPtr pkt)
+{
+    DPRINTF(CryptoCtrl, "recvTimingResp %s\n", formattedPacket(pkt));
+    owner->stats.mdcacheTotalCountRecv++;
+
+    // just forward
+    return owner->handleResponse(pkt);
+}
+
+void
+CryptoCtrl::MetadataCacheSidePort::recvReqRetry()
+{
+    bool success = true;
+    // use for loop to only process packets currently in queue,
+    // ignorning newly added failed packets
+    //for (int i = 0; i < failedPackets.size(); i++) {
+    while (success && !failedPackets.empty()) {
+        owner->stats.mdcacheRetryCountSend++;
+        // grab next packet
+        auto pkt = failedPackets.front();
+        failedPackets.pop();
+        // try to send packet
+        success = sendTimingReq(pkt);
+        DPRINTF(CryptoCtrl, "recvReqRetry %s, success=%d\n",
+            formattedPacket(pkt), success);
+        // keep packets which were not successfully resent
+        if (!success)
+            failedPackets.push(pkt);
+    }
+    DPRINTF(CryptoCtrl, "recvReqRetry %d failed packets in queue\n",
+        failedPackets.size());
+}
+
+void
+CryptoCtrl::MetadataCacheSidePort::recvRangeChange()
+{
+    owner->sendRangeChange();
 }
 
 AddrRangeList
@@ -226,7 +287,6 @@ CryptoCtrl::MemSidePort::recvReqRetry()
     bool success = true;
     // use for loop to only process packets currently in queue,
     // ignorning newly added failed packets
-    //for (int i = 0; i < failedPackets.size(); i++) {
     while (success && !failedPackets.empty()) {
         owner->stats.memRetryCountSend++;
         // grab next packet

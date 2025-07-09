@@ -7,8 +7,48 @@ from m5.util import fatal
 from gem5.components.memory.dramsim_3 import DRAMSim3MemCtrl
 
 
+class MetadataCache(Cache):
+    assoc = 2
+    tag_latency = 2
+    data_latency = 2
+    response_latency = 2
+    mshrs = 4
+    tgts_per_mshr = 20
+
+    def __init__(
+        self,
+        size,
+        assoc=None,
+        tag_latency=None,
+        data_latency=None,
+        response_latency=None,
+        mshrs=None,
+        tgts_per_mshr=None,
+    ):
+        super().__init__()
+        self.size = size
+        if assoc:
+            self.assoc = assoc
+        if tag_latency:
+            self.tag_latency = tag_latency
+        if data_latency:
+            self.data_latency = data_latency
+        if response_latency:
+            self.response_latency = response_latency
+        if mshrs:
+            self.mshrs = mshrs
+        if tgts_per_mshr:
+            self.tgts_per_mshr = tgts_per_mshr
+
+    def connectCPUSideBusPort(self, bus_side_port):
+        self.cpu_side = bus_side_port
+
+    def connectMemSideBusPort(self, bus_side_port):
+        self.mem_side = bus_side_port
+
+
 class MemorySystem:
-    def parameterize_crypto_system(self, args, crypto_ctrl, range_total):
+    def parameterize_crypto_system(self, args, system, range_total):
         # TODO: remove this hack
         bus_bytes = 64
         p = args.crypto_packing_factor
@@ -60,39 +100,48 @@ class MemorySystem:
         leaf_bytes = int(leaf_node_count * tree_node_bytes)
 
         # assign memory regions
-        crypto_ctrl.range_total = range_total
-        crypto_ctrl.range_data = AddrRange(
+        system.crypto_ctrl.range_total = range_total
+        system.crypto_ctrl.range_data = AddrRange(
             Addr(range_total.start), size=range_data_bytes // bus_bytes
         )
-        crypto_ctrl.range_integrity = AddrRange(
-            Addr(crypto_ctrl.range_data.end),
+        system.crypto_ctrl.range_integrity = AddrRange(
+            Addr(system.crypto_ctrl.range_data.end),
             size=range_integrity_bytes // bus_bytes,
         )
-        crypto_ctrl.range_leaves = AddrRange(
+        system.crypto_ctrl.range_leaves = AddrRange(
             Addr(
-                crypto_ctrl.range_integrity.start + non_leaf_bytes // bus_bytes
+                system.crypto_ctrl.range_integrity.start
+                + non_leaf_bytes // bus_bytes
             ),
             size=leaf_bytes // bus_bytes,
         )
 
         print(
-            crypto_ctrl.range_total.size(),
-            crypto_ctrl.range_data.size() + crypto_ctrl.range_integrity.size(),
+            system.crypto_ctrl.range_total.size(),
+            system.crypto_ctrl.range_data.size()
+            + system.crypto_ctrl.range_integrity.size(),
         )
 
-        crypto_ctrl.total_memory_addresses = total_memory_addresses
-        crypto_ctrl.bus_bytes = bus_bytes
-        crypto_ctrl.aes_enc_cycles = args.crypto_aes_enc_cycles
-        crypto_ctrl.aes_dec_cycles = args.crypto_aes_dec_cycles
-        crypto_ctrl.aes_enc_ii = args.crypto_aes_enc_ii
-        crypto_ctrl.aes_dec_ii = args.crypto_aes_dec_ii
-        crypto_ctrl.mac_cycles = args.crypto_mac_cycles
-        crypto_ctrl.mac_ii = args.crypto_mac_ii
-        crypto_ctrl.aes_block_bits = args.crypto_aes_block_bits
-        crypto_ctrl.counter_bits = args.crypto_counter_bits
-        crypto_ctrl.mac_bits = args.crypto_mac_bits
-        crypto_ctrl.tree_node_bytes = tree_node_bytes
-        crypto_ctrl.tree_height = tree_height
+        # configure crypto controller
+        system.crypto_ctrl.total_memory_addresses = total_memory_addresses
+        system.crypto_ctrl.bus_bytes = bus_bytes
+        system.crypto_ctrl.aes_enc_cycles = args.crypto_aes_enc_cycles
+        system.crypto_ctrl.aes_dec_cycles = args.crypto_aes_dec_cycles
+        system.crypto_ctrl.aes_enc_ii = args.crypto_aes_enc_ii
+        system.crypto_ctrl.aes_dec_ii = args.crypto_aes_dec_ii
+        system.crypto_ctrl.mac_cycles = args.crypto_mac_cycles
+        system.crypto_ctrl.mac_ii = args.crypto_mac_ii
+        system.crypto_ctrl.aes_block_bits = args.crypto_aes_block_bits
+        system.crypto_ctrl.counter_bits = args.crypto_counter_bits
+        system.crypto_ctrl.mac_bits = args.crypto_mac_bits
+        system.crypto_ctrl.tree_node_bytes = tree_node_bytes
+        system.crypto_ctrl.tree_height = tree_height
+
+        # configure metadata cache
+        system.metadata_cache.assoc = int(
+            2 ** math.ceil(math.log2(tree_height))
+        )
+        system.metadata_cache.write_allocator.cache_line_size = tree_node_bytes
 
     def initialize(self, system, args, cache_system):
         # dramsim specific setup
@@ -110,8 +159,17 @@ class MemorySystem:
         # configure intermediary crypto controller if specified
         if args.memsec:
             system.crypto_ctrl = CryptoCtrl()
+            system.metadata_cache = MetadataCache(
+                size=args.metadata_cache_size
+            )
             self.parameterize_crypto_system(
-                args, system.crypto_ctrl, system.mem_ctrl.range
+                args, system, system.mem_ctrl.range
+            )
+            system.metadata_cache.connectCPUSideBusPort(
+                system.crypto_ctrl.metadata_cache_side_port
+            )
+            system.metadata_cache.connectMemSideBusPort(
+                system.mem_bus.cpu_side_ports
             )
             system.crypto_ctrl.mem_side_port = system.mem_bus.cpu_side_ports
             cache_system.connectMemSide(system.crypto_ctrl.cpu_side_port)
