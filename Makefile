@@ -10,7 +10,7 @@ GEM5_CONFIG_MAC:=--crypto-mac-cycles=200 --crypto-mac-ii=200
 GEM5_CONFIG_CRYPTO:=--crypto-counter-bits=56 --crypto-mac-bits=64 --crypto-packing-factor=8 --metadata-cache-size=16KiB
 PIPEVIEW:=util/o3-pipeview.py
 PIPEVIEW_CONFIG:=-c 1000 -o m5out/pipeview.out --color m5out/trace.out
-DEBUG_FLAGS:=--debug-flags=DRAMsim3,CryptoCtrl
+DEBUG_FLAGS:=--debug-flags=DRAMsim3,CryptoCtrl,Cache
 REMOTE_HOSTNAME:=tlml003
 REMOTE_DIR:=~/gem5
 

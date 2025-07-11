@@ -8,6 +8,7 @@
 #include "crypto_event.hh"
 #include "debug/CryptoCtrl.hh"
 #include "mem/packet.hh"
+#include "mem/request.hh"
 #include "sim/clocked_object.hh"
 #include "sim/cur_tick.hh"
 
@@ -23,6 +24,8 @@ formattedPacket(PacketPtr pkt)
     ss << ", cmd=" << pkt->cmdString();
     ss << ", size=" << unsigned(pkt->getSize());
     ss << ", read=" << unsigned(pkt->isRead());
+    ss << ", reqid=" << unsigned(pkt->requestorId());
+    ss << ", flags=0x" << std::hex << unsigned(pkt->req->getFlags());
     ss << ")";
     return ss.str();
 }
@@ -68,7 +71,8 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
       cpuPort(params.name + ".cpu_side_port", this),
       memPort(params.name + ".mem_side_port", this)
 {
-    total_memory_bytes = params.total_memory_addresses * params.bus_bytes;
+    uint64_t total_memory_bytes =
+        params.total_memory_addresses * params.bus_bytes;
     DPRINTF(CryptoCtrl, "Created crypto controller with properties\n");
     DPRINTF(CryptoCtrl, "\t\t\t%d total memory bytes (%f MiB)\n",
         total_memory_bytes, (double)total_memory_bytes / 1024.f / 1024.f);
@@ -82,8 +86,9 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
         counter_bytes);
     DPRINTF(CryptoCtrl, "\t\t\t%d mac bits (%d bytes)\n", mac_bits, mac_bytes);
     DPRINTF(CryptoCtrl,
-        "\t\t\t%d integrity tree node bits (%d bytes, %d packing factor)\n",
-        tree_node_bytes * 8, tree_node_bytes, packing_factor);
+        "\t\t\t%d integrity tree node bits (%d bytes, %d packing factor, %d "
+        "height)\n",
+        tree_node_bytes * 8, tree_node_bytes, packing_factor, tree_height);
     DPRINTF(CryptoCtrl,
         "\t\t\t%s memory region (total, %d address bits required)\n",
         range_total.to_string(),
@@ -160,7 +165,7 @@ CryptoCtrl::MetadataCacheSidePort::recvTimingResp(PacketPtr pkt)
     owner->stats.mdcacheTotalCountRecv++;
 
     // just forward
-    return owner->handleResponse(pkt);
+    return owner->handleResponse(pkt, ResponseSource::MetadataCache);
 }
 
 void
@@ -278,7 +283,7 @@ CryptoCtrl::MemSidePort::recvTimingResp(PacketPtr pkt)
     owner->stats.memTotalCountRecv++;
 
     // just forward
-    return owner->handleResponse(pkt);
+    return owner->handleResponse(pkt, ResponseSource::MemoryController);
 }
 
 void
@@ -352,6 +357,31 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
 
         // schedule future event, when the crypto unit finished encrypting
         schedule(new CryptoWriteEvent(this, pkt), end);
+
+        // kick off read events for integrity tree updates
+        const uint64_t non_leaf_nodes =
+            (std::pow(packing_factor, tree_height) - 1) / (packing_factor - 1);
+        uint64_t node_id =
+            non_leaf_nodes + (pkt->getAddr() / bus_bytes) / packing_factor;
+        for (int i = 0; i < tree_height - 1; i++) {
+            Addr node = range_integrity.start() +
+                ((node_id / (uint64_t)std::pow(packing_factor, i)) &
+                    (-1 - (tree_node_bytes - 1)));
+            DPRINTF(CryptoCtrl,
+                "translating address 0x%x into integrity tree address 0x%x "
+                "at tree level %d\n",
+                pkt->getAddr(), node, i);
+            panic_if(!range_integrity.contains(node),
+                "the node address 0x%x must lie within the integrity memory "
+                "range %s\n",
+                node, range_integrity.to_string());
+
+            PacketPtr packet_fetch_md =
+                createPkt(node, tree_node_bytes, 0, 0, MemCmd::ReadReq);
+            DPRINTF(CryptoCtrl, "launching request %d packet %s\n", i,
+                formattedPacket(packet_fetch_md));
+            mdcachePort.sendPacket(packet_fetch_md);
+        }
     }
 
     return true;
@@ -365,40 +395,50 @@ CryptoCtrl::CryptoWrite(PacketPtr pkt)
 }
 
 bool
-CryptoCtrl::handleResponse(PacketPtr pkt)
+CryptoCtrl::handleResponse(PacketPtr pkt, ResponseSource source)
 {
-    DPRINTF(CryptoCtrl, "handleResponse %s\n", formattedPacket(pkt));
+    DPRINTF(CryptoCtrl, "handleResponse %s, type=%s\n", formattedPacket(pkt),
+        source);
 
-    if (pkt->isRead()) {
-        // consider when the incoming request becomes servicable,
-        // if the unit might be busy
-        Tick start = curTick() > aes_dec_ready ? curTick() : aes_dec_ready;
-        int iterations = pkt->getSize() / aes_block_bytes;
-        // every II we schedule an iteration, considering ramp-up and ramp-down
-        Tick delay = iterations * aes_dec_ii + (aes_dec_cycles - aes_dec_ii);
-        Tick end = start + delay;
-        // consider how long the current operations blocks other incoming
-        // requests
-        aes_dec_ready = start + (iterations - 1) * aes_dec_ii;
+    switch (source) {
+    case ResponseSource::MemoryController:
+        if (pkt->isRead()) {
+            // consider when the incoming request becomes servicable,
+            // if the unit might be busy
+            Tick start =
+                curTick() > aes_dec_ready ? curTick() : aes_dec_ready;
+            int iterations = pkt->getSize() / aes_block_bytes;
+            // every II we schedule an iteration, considering ramp-up and
+            // ramp-down
+            Tick delay =
+                iterations * aes_dec_ii + (aes_dec_cycles - aes_dec_ii);
+            Tick end = start + delay;
+            // consider how long the current operations blocks other incoming
+            // requests
+            aes_dec_ready = start + (iterations - 1) * aes_dec_ii;
 
-        // if data should be processed, now would be the time to process it
-        // AESDecrypt(pkt);
-        /*
-        // print data
-        uint8_t* byte = pkt->getPtr<uint8_t>();
-        for (int i = 0; i < pkt->getSize(); i++) {
-            printf("%.02x", *(byte++));
+            // if data should be processed, now would be the time to process it
+            // AESDecrypt(pkt);
+            /*
+                // print data
+                uint8_t* byte = pkt->getPtr<uint8_t>();
+                for (int i = 0; i < pkt->getSize(); i++) {
+                    printf("%.02x", *(byte++));
+                }
+                printf("\n");
+                */
+
+            //schedule(new AESDecryptEvent(this, pkt), clockEdge(delay));
+            schedule(new CryptoReadEvent(this, pkt), end);
+        } else {
+            // directly forward the data
+            cpuPort.sendPacket(pkt);
         }
-        printf("\n");
-        */
-
-        //schedule(new AESDecryptEvent(this, pkt), clockEdge(delay));
-        schedule(new CryptoReadEvent(this, pkt), end);
-    } else {
-        // directly forward the data
-        cpuPort.sendPacket(pkt);
+        break;
+    case ResponseSource::MetadataCache:
+        DPRINTF(CryptoCtrl, "unimplemented\n");
+        break;
     }
-
 
     return true;
 }

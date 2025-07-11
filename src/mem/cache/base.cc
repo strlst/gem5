@@ -47,6 +47,7 @@
 
 #include "base/compiler.hh"
 #include "base/logging.hh"
+#include "base/trace.hh"
 #include "debug/Cache.hh"
 #include "debug/CacheComp.hh"
 #include "debug/CachePort.hh"

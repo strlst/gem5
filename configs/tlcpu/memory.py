@@ -102,7 +102,8 @@ class MemorySystem:
         # assign memory regions
         system.crypto_ctrl.range_total = range_total
         system.crypto_ctrl.range_data = AddrRange(
-            Addr(range_total.start), size=range_data_bytes // bus_bytes
+            Addr(range_total.start),
+            size=range_data_bytes // bus_bytes,
         )
         system.crypto_ctrl.range_integrity = AddrRange(
             Addr(system.crypto_ctrl.range_data.end),
@@ -111,7 +112,8 @@ class MemorySystem:
         system.crypto_ctrl.range_leaves = AddrRange(
             Addr(
                 system.crypto_ctrl.range_integrity.start
-                + non_leaf_bytes // bus_bytes
+                + (non_leaf_bytes // bus_bytes)
+                & (-1 - (bus_bytes - 1))
             ),
             size=leaf_bytes // bus_bytes,
         )
@@ -142,6 +144,12 @@ class MemorySystem:
             2 ** math.ceil(math.log2(tree_height))
         )
         system.metadata_cache.write_allocator.cache_line_size = tree_node_bytes
+
+        # update memory ranges
+        system.mem_ranges = [
+            system.crypto_ctrl.range_data,
+            system.crypto_ctrl.range_integrity,
+        ]
 
     def initialize(self, system, args, cache_system):
         # dramsim specific setup

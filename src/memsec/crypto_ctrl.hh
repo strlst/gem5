@@ -31,6 +31,12 @@ namespace gem5
 
 typedef std::pair<Tick, PacketPtr> DelayedPacket;
 
+enum ResponseSource
+{
+    MemoryController,
+    MetadataCache
+};
+
 /**
  * A very simple controller.
  */
@@ -48,14 +54,8 @@ class CryptoCtrl : public ClockedObject
 
     uint64_t tree_height;
     uint64_t tree_node_bytes;
-    uint64_t tree_node_count;
-    uint64_t leaf_node_count;
-    uint64_t int_tree_height;
-    uint64_t int_tree_branching_factor;
 
     uint64_t total_memory_addresses;
-    uint64_t total_memory_blocks;
-    uint64_t total_memory_bytes;
 
     uint64_t bus_bytes;
 
@@ -213,7 +213,7 @@ class CryptoCtrl : public ClockedObject
      * @return true if we can handle the response this cycle, false if the
      *         responder needs to retry later
      */
-    bool handleResponse(PacketPtr pkt);
+    bool handleResponse(PacketPtr pkt, ResponseSource source);
 
     /**
      * Handle a packet functionally. Update the data on a write and get the
