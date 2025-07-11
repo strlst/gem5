@@ -5,6 +5,7 @@
 
 #include "base/trace.hh"
 #include "base/types.hh"
+#include "crypto_ctrl.hh"
 #include "crypto_event.hh"
 #include "debug/CryptoCtrl.hh"
 #include "mem/packet.hh"
@@ -62,20 +63,18 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
       counter_bytes(params.counter_bits / 8), mac_bits(params.mac_bits),
       mac_bytes(params.mac_bits / 8), packing_factor(params.packing_factor),
       tree_height(params.tree_height),
-      tree_node_bytes(params.tree_node_bytes),
-      total_memory_addresses(params.total_memory_addresses),
-      bus_bytes(params.bus_bytes), range_total(params.range_total),
-      range_data(params.range_data), range_integrity(params.range_integrity),
+      tree_node_bytes(params.tree_node_bytes), bus_bytes(params.bus_bytes),
+      range_total(params.range_total), range_data(params.range_data),
+      range_integrity(params.range_integrity),
       range_leaves(params.range_leaves), stats(this),
       mdcachePort(params.name + ".mdcache_side_port", this),
       cpuPort(params.name + ".cpu_side_port", this),
       memPort(params.name + ".mem_side_port", this)
 {
-    uint64_t total_memory_bytes =
-        params.total_memory_addresses * params.bus_bytes;
     DPRINTF(CryptoCtrl, "Created crypto controller with properties\n");
     DPRINTF(CryptoCtrl, "\t\t\t%d total memory bytes (%f MiB)\n",
-        total_memory_bytes, (double)total_memory_bytes / 1024.f / 1024.f);
+        params.range_total.size(),
+        (double)params.range_total.size() / 1024.f / 1024.f);
     DPRINTF(CryptoCtrl, "\t\t\t%d aes block bits (%d bytes)\n",
         aes_block_bytes * 8, aes_block_bytes);
     DPRINTF(CryptoCtrl, "\t\t\t%d aes encryption cycles (%d ii)\n",
@@ -115,7 +114,7 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
     assert(range_integrity.start() < range_integrity.end());
     assert(range_leaves.start() < range_leaves.end());
     assert(params.range_total.end() >= params.range_total.start() +
-            (range_data.size() + range_integrity.size()) / params.bus_bytes);
+            (range_data.size() + range_integrity.size()));
     assert(params.range_total.start() == range_data.start());
     assert(params.range_total.end() >= range_integrity.end());
     assert(range_integrity.size() < range_data.size());
@@ -359,18 +358,26 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         schedule(new CryptoWriteEvent(this, pkt), end);
 
         // kick off read events for integrity tree updates
+        // NOTE: the latency of address translation can probably be hidden in
+        // case packing_factor is not a power of 2, and if it is, the
+        // necessary operations can be performed with bit operations
+        // this part is constant with respect to system instantiation
         const uint64_t non_leaf_nodes =
             (std::pow(packing_factor, tree_height) - 1) / (packing_factor - 1);
+        // this part is the same for the calculation of all parent nodes
         uint64_t node_id =
-            non_leaf_nodes + (pkt->getAddr() / bus_bytes) / packing_factor;
-        for (int i = 0; i < tree_height - 1; i++) {
-            Addr node = range_integrity.start() +
-                ((node_id / (uint64_t)std::pow(packing_factor, i)) &
-                    (-1 - (tree_node_bytes - 1)));
+            non_leaf_nodes + pkt->getAddr() / bus_bytes / packing_factor;
+        for (int i = 0; i < tree_height; i++) {
+            // it is important that the division is performed before the
+            // multiplication, as we are exploiting integer division rounding
+            // to implement correct parent node address calculations!
+            uint64_t parent_id =
+                node_id / (uint64_t)std::pow(packing_factor, i);
+            Addr node = range_integrity.start() + parent_id * tree_node_bytes;
             DPRINTF(CryptoCtrl,
                 "translating address 0x%x into integrity tree address 0x%x "
-                "at tree level %d\n",
-                pkt->getAddr(), node, i);
+                "from nodeid %d (after %d non leaves) at tree level %d\n",
+                pkt->getAddr(), node, node_id, non_leaf_nodes, i);
             panic_if(!range_integrity.contains(node),
                 "the node address 0x%x must lie within the integrity memory "
                 "range %s\n",
@@ -436,7 +443,7 @@ CryptoCtrl::handleResponse(PacketPtr pkt, ResponseSource source)
         }
         break;
     case ResponseSource::MetadataCache:
-        DPRINTF(CryptoCtrl, "unimplemented\n");
+        DPRINTF(CryptoCtrl, "unimplemented %s\n", formattedPacket(pkt));
         break;
     }
 

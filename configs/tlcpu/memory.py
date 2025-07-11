@@ -48,14 +48,15 @@ class MetadataCache(Cache):
 
 
 class MemorySystem:
-    def parameterize_crypto_system(self, args, system, range_total):
+    def parameterize_crypto_system(self, args, system):
         # TODO: remove this hack
         bus_bytes = 64
+        range_total = AddrRange(
+            Addr(system.mem_ranges[0].start),
+            size=system.mem_ranges[0].size(),
+        )
+        total_memory_bytes = range_total.size()
         p = args.crypto_packing_factor
-
-        # tally total available memory
-        total_memory_addresses = range_total.size()
-        total_memory_bytes = total_memory_addresses * bus_bytes
 
         # get tree node size
         tree_node_bytes = (
@@ -64,13 +65,13 @@ class MemorySystem:
 
         # formula is derived by hand
         # node size s [bits] = p * c + m
-        # total size t [bits] <= 128pl + ns
-        #            t [bits] <= 128p^(h+1) + s(p^(h+1) - 1)/(p - 1)
-        # => h = ceil(log_p((t(p - 1) + s) / (128(p - 1) + s))) - 1
+        # total size t [bits] >= 128pl + ns
+        #            t [bits] >= 128p^(h+1) + s(p^(h+1) - 1)/(p - 1)
+        # => h = floor(log_p((t(p - 1) + s) / (128(p - 1) + s))) - 1
         tree_height = (
-            math.ceil(
+            math.floor(
                 math.log(
-                    (total_memory_addresses * (p - 1) + tree_node_bytes)
+                    (total_memory_bytes * (p - 1) + tree_node_bytes)
                     / (
                         (args.crypto_aes_block_bits // 8) * (p - 1)
                         + tree_node_bytes
@@ -88,44 +89,43 @@ class MemorySystem:
         # calculate region sizes in bytes
         # reserve extra space for alignment
         # range_integrity_bytes = tree_node_count * tree_node_bytes
-        range_integrity_bytes = int(
-            math.pow(
-                2, math.ceil(math.log2(tree_node_count * tree_node_bytes))
-            )
+        range_integrity_bytes = (
+            int(math.pow(2, math.ceil(math.log2(tree_node_count))))
+            * tree_node_bytes
         )
         range_data_bytes = int(total_memory_bytes - range_integrity_bytes)
         non_leaf_bytes = (
             int(tree_node_count - leaf_node_count) * tree_node_bytes
         )
         leaf_bytes = int(leaf_node_count * tree_node_bytes)
+        print(
+            range_total,
+            tree_height,
+            math.log2(total_memory_bytes),
+            math.log2(tree_node_count * tree_node_bytes),
+            range_data_bytes,
+            range_integrity_bytes,
+        )
 
         # assign memory regions
         system.crypto_ctrl.range_total = range_total
         system.crypto_ctrl.range_data = AddrRange(
             Addr(range_total.start),
-            size=range_data_bytes // bus_bytes,
+            size=range_data_bytes,
         )
         system.crypto_ctrl.range_integrity = AddrRange(
             Addr(system.crypto_ctrl.range_data.end),
-            size=range_integrity_bytes // bus_bytes,
+            size=range_integrity_bytes,
         )
         system.crypto_ctrl.range_leaves = AddrRange(
             Addr(
-                system.crypto_ctrl.range_integrity.start
-                + (non_leaf_bytes // bus_bytes)
+                system.crypto_ctrl.range_integrity.start + (non_leaf_bytes)
                 & (-1 - (bus_bytes - 1))
             ),
-            size=leaf_bytes // bus_bytes,
-        )
-
-        print(
-            system.crypto_ctrl.range_total.size(),
-            system.crypto_ctrl.range_data.size()
-            + system.crypto_ctrl.range_integrity.size(),
+            size=leaf_bytes,
         )
 
         # configure crypto controller
-        system.crypto_ctrl.total_memory_addresses = total_memory_addresses
         system.crypto_ctrl.bus_bytes = bus_bytes
         system.crypto_ctrl.aes_enc_cycles = args.crypto_aes_enc_cycles
         system.crypto_ctrl.aes_dec_cycles = args.crypto_aes_dec_cycles
@@ -156,13 +156,12 @@ class MemorySystem:
         system.mem_ctrl = DRAMSim3MemCtrl(
             mem_name="DDR4_8Gb_x8_3200", num_chnls=1
         )
+        system.mem_ranges = [AddrRange("8GiB")]
+        system.mem_ctrl.range = system.mem_ranges[0]
 
         # interconnects
         system.mem_bus = SystemXBar()
         system.mem_ctrl.port = system.mem_bus.mem_side_ports
-
-        # ranges
-        system.mem_ranges = [system.mem_ctrl.range]
 
         # configure intermediary crypto controller if specified
         if args.memsec:
@@ -170,9 +169,7 @@ class MemorySystem:
             system.metadata_cache = MetadataCache(
                 size=args.metadata_cache_size
             )
-            self.parameterize_crypto_system(
-                args, system, system.mem_ctrl.range
-            )
+            self.parameterize_crypto_system(args, system)
             system.metadata_cache.connectCPUSideBusPort(
                 system.crypto_ctrl.metadata_cache_side_port
             )
