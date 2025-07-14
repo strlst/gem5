@@ -43,6 +43,9 @@ enum ResponseSource
 class CryptoCtrl : public ClockedObject
 {
   private:
+    System *sys;
+    RequestorID requestorId;
+
     Tick aes_enc_ready, aes_dec_ready;
     uint64_t aes_block_bits, aes_block_bytes;
     uint64_t aes_enc_cycles, aes_dec_cycles;
@@ -247,6 +250,21 @@ class CryptoCtrl : public ClockedObject
     /** constructor
      */
     CryptoCtrl(const CryptoCtrlParams& params);
+
+    /**
+     * Create a Packet from given parameters.
+     */
+    PacketPtr createPkt(Addr addr, size_t size, MemCmd cmd);
+
+    /**
+     * Create a Packet copy with a different command.
+     */
+    PacketPtr createPktFromPkt(PacketPtr pkt, MemCmd cmd);
+
+    /**
+     * Change the command of a Packet.
+     */
+    void modifyPkt(PacketPtr pkt, MemCmd cmd);
 
     /**
      * Get a port with a given name and index. This is used at

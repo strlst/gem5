@@ -12,11 +12,12 @@
 #include "mem/request.hh"
 #include "sim/clocked_object.hh"
 #include "sim/cur_tick.hh"
+#include "sim/system.hh"
 
 namespace gem5
 {
 
-std::string
+inline std::string
 formattedPacket(PacketPtr pkt)
 {
     std::ostringstream ss;
@@ -31,32 +32,36 @@ formattedPacket(PacketPtr pkt)
     return ss.str();
 }
 
-PacketPtr
-createPkt(Addr addr, size_t size, uint32_t flags, uint16_t requestorId,
-    MemCmd cmd)
+inline PacketPtr
+CryptoCtrl::createPkt(Addr addr, size_t size, MemCmd cmd)
 {
+    Request::Flags flags = Request::PHYSICAL;
     // we simply create a new packet and fill it, first creating a
     // req pointer and finally a packet ptr
-    RequestPtr req(new Request(addr, size, flags, requestorId));
-    PacketPtr newPkt = new Packet(req, cmd);
-
+    RequestPtr request =
+        std::make_shared<Request>(addr, size, flags, requestorId);
+    PacketPtr pkt = new Packet(request, cmd);
     // create uninitialized data
-    uint8_t* reqData = new uint8_t[size];
-    newPkt->dataDynamic(reqData);
-
-    return newPkt;
+    pkt->allocate();
+    return pkt;
 }
 
-PacketPtr
-createPktFromPkt(PacketPtr pkt, MemCmd cmd)
+inline PacketPtr
+CryptoCtrl::createPktFromPkt(PacketPtr pkt, MemCmd cmd)
 {
-    return createPkt(pkt->getAddr(), pkt->getSize(), pkt->req->getFlags(),
-        pkt->req->requestorId(), cmd);
+    return createPkt(pkt->getAddr(), pkt->getSize(), cmd);
+}
+
+inline void
+CryptoCtrl::modifyPkt(PacketPtr pkt, MemCmd cmd)
+{
+    pkt->cmd = cmd;
 }
 
 CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
-    : ClockedObject(params), aes_enc_ready(0), aes_dec_ready(0),
-      aes_block_bytes(params.aes_block_bits / 8),
+    : ClockedObject(params), sys(params.system),
+      requestorId(sys->getRequestorId(this)), aes_enc_ready(0),
+      aes_dec_ready(0), aes_block_bytes(params.aes_block_bits / 8),
       aes_enc_cycles(params.aes_enc_cycles),
       aes_dec_cycles(params.aes_dec_cycles), aes_enc_ii(params.aes_enc_ii),
       aes_dec_ii(params.aes_dec_ii), counter_bits(params.counter_bits),
@@ -384,7 +389,7 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
                 node, range_integrity.to_string());
 
             PacketPtr packet_fetch_md =
-                createPkt(node, tree_node_bytes, 0, 0, MemCmd::ReadReq);
+                createPkt(node, tree_node_bytes, MemCmd::ReadReq);
             DPRINTF(CryptoCtrl, "launching request %d packet %s\n", i,
                 formattedPacket(packet_fetch_md));
             mdcachePort.sendPacket(packet_fetch_md);
@@ -443,7 +448,40 @@ CryptoCtrl::handleResponse(PacketPtr pkt, ResponseSource source)
         }
         break;
     case ResponseSource::MetadataCache:
-        DPRINTF(CryptoCtrl, "unimplemented %s\n", formattedPacket(pkt));
+        // needs to be overworked, but for now we are implementing a simple
+        // counter update scheme
+        if (pkt->isRead()) {
+            // the cache has yielded the data, now we update the counters
+            // and hash
+            uint8_t offset = pkt->getAddr() % packing_factor;
+            DPRINTF(CryptoCtrl,
+                "received mdcache read event address=0x%x, offset=0x%x, "
+                "data\n",
+                pkt->getAddr(), offset);
+            // next we want to update the counter at position offset, in a
+            // way that is generic with respect to counter size
+            // (byte granularity)
+            uint8_t* data = pkt->getPtr<uint8_t>();
+            uint8_t carry = 1;
+            uint8_t rightmost = offset * counter_bytes;
+            for (int k = counter_bytes - 1; k >= 0 && carry == 1; k--) {
+                data[rightmost + k] += carry;
+                // we only carry if there has been an overflow
+                carry = data[rightmost + k] == 0;
+            }
+            // print data
+            for (int i = 0; i < pkt->getSize(); i++) {
+                printf("%.02x", *(data++));
+            }
+            printf("\n");
+            modifyPkt(pkt, MemCmd::WriteReq);
+            DPRINTF(CryptoCtrl, "launching request %d packet %s\n", offset,
+                formattedPacket(pkt));
+            mdcachePort.sendPacket(pkt);
+        } else {
+            DPRINTF(CryptoCtrl, "finished metadata write %s\n",
+                formattedPacket(pkt));
+        }
         break;
     }
 

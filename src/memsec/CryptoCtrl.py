@@ -1,11 +1,14 @@
 from m5.objects.ClockedObject import ClockedObject
 from m5.params import *
+from m5.proxy import *
 
 
 class CryptoCtrl(ClockedObject):
     type = "CryptoCtrl"
     cxx_header = "memsec/crypto_ctrl.hh"
     cxx_class = "gem5::CryptoCtrl"
+
+    system = Param.System(Parent.any, "system object")
 
     total_memory_addresses = Param.Int(0, "total memory size in bytes")
     bus_bytes = Param.Int(0, "bus size in bytes")
