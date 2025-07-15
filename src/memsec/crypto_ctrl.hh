@@ -37,13 +37,42 @@ enum ResponseSource
     MetadataCache
 };
 
+struct TreeUpdateRequest
+{
+    Addr data_address;
+    Addr node_address;
+    uint64_t offset;
+    uint8_t completed_layers = 0;
+
+    std::string to_string()
+    {
+        std::ostringstream ss;
+        ss << "treeUpdateReq(";
+        ss << "data_addr=0x" << std::hex << data_address << std::dec;
+        ss << ", node_addr=0x" << std::hex << node_address << std::dec;
+        ss << ", offset=" << unsigned(offset);
+        ss << ", completed_layers=" << unsigned(completed_layers);
+        ss << ")";
+        return ss.str();
+    }
+};
+
+struct TreeCheckRequest
+{
+    Addr data_address;
+    Addr node_address;
+    uint64_t offset;
+    uint8_t completed_layers = 0;
+    bool violation = false;
+};
+
 /**
  * A very simple controller.
  */
 class CryptoCtrl : public ClockedObject
 {
   private:
-    System *sys;
+    System* sys;
     RequestorID requestorId;
 
     Tick aes_enc_ready, aes_dec_ready;
@@ -52,6 +81,7 @@ class CryptoCtrl : public ClockedObject
     uint64_t aes_enc_ii, aes_dec_ii;
     uint64_t counter_bits, counter_bytes;
     uint64_t mac_bits, mac_bytes;
+    uint64_t mac_cycles, mac_ii;
     uint64_t packing_factor;
     uint64_t bytes_per_address;
 
@@ -64,6 +94,11 @@ class CryptoCtrl : public ClockedObject
     AddrRange range_data;
     AddrRange range_integrity;
     AddrRange range_leaves;
+
+    std::map<Addr, TreeUpdateRequest> treeUpdateQueue;
+    std::map<Addr, TreeCheckRequest> treeCheckQueue;
+    uint64_t tree_update_buffer_size;
+    uint64_t tree_check_buffer_size;
 
     struct PktStats : public Group
     {
