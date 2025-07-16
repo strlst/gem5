@@ -2,12 +2,12 @@
 
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 
 #include "base/trace.hh"
 #include "base/types.hh"
 #include "crypto_ctrl.hh"
 #include "crypto_event.hh"
-#include "debug/CryptoCtrl.hh"
 #include "mem/packet.hh"
 #include "mem/request.hh"
 #include "sim/clocked_object.hh"
@@ -22,12 +22,13 @@ formattedPacket(PacketPtr pkt)
 {
     std::ostringstream ss;
     ss << "pkt(";
-    ss << "addr=0x" << std::hex << unsigned(pkt->getAddr()) << std::dec;
+    ss << "addr=0x" << std::hex << pkt->getAddr() << std::dec;
     ss << ", cmd=" << pkt->cmdString();
     ss << ", size=" << unsigned(pkt->getSize());
     ss << ", read=" << unsigned(pkt->isRead());
     ss << ", reqid=" << unsigned(pkt->requestorId());
-    ss << ", flags=0x" << std::hex << unsigned(pkt->req->getFlags());
+    ss << ", flags=0x" << std::hex << unsigned(pkt->req->getFlags())
+       << std::dec;
     ss << ")";
     return ss.str();
 }
@@ -73,7 +74,9 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
       range_total(params.range_total), range_data(params.range_data),
       range_integrity(params.range_integrity),
       range_leaves(params.range_leaves),
-      tree_update_buffer_size(params.tree_update_buffer_size),
+      treeUpdateQueue(TreeUpdateQueue(this, params.tree_update_buffer_size,
+          params.bus_bytes, params.packing_factor, params.tree_height,
+          params.tree_node_bytes, params.range_integrity)),
       tree_check_buffer_size(params.tree_check_buffer_size), stats(this),
       mdcachePort(params.name + ".mdcache_side_port", this),
       cpuPort(params.name + ".cpu_side_port", this),
@@ -113,6 +116,10 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
         "required)\n",
         range_leaves.to_string(),
         std::log2(range_leaves.end() - range_leaves.start()));
+
+    // also report on subcomponent
+    DPRINTF(CryptoCtrl, "Created tree update queue with size %d\n",
+        params.tree_update_buffer_size);
 
     // sanity check
     assert(range_data.size() + range_integrity.size() <= range_total.size());
@@ -327,17 +334,10 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "handleRequest %s\n", formattedPacket(pkt));
 
-    // kick off read events for integrity tree updates
-    // NOTE: the latency of address translation can probably be hidden in
-    // case packing_factor is not a power of 2, and if it is, the
-    // necessary operations can be performed with bit operations
-    // this part is constant with respect to system instantiation
-    const uint64_t non_leaf_nodes =
-        (std::pow(packing_factor, tree_height) - 1) / (packing_factor - 1);
-
     if (pkt->isRead()) {
         // if we are not ready to receive another request
-        if (treeCheckQueue.size() >= tree_check_buffer_size) {
+        // NOTE: each request enqueues tree_height entries
+        if (treeCheckQueue.size() >= tree_height * tree_check_buffer_size) {
             DPRINTF(CryptoCtrl,
                 "busy due to full tree check queue, postponing %s\n",
                 formattedPacket(pkt));
@@ -351,7 +351,8 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         memPort.sendPacket(pkt);
     } else {
         // if we are not ready to receive another request
-        if (treeUpdateQueue.size() >= tree_update_buffer_size) {
+        // NOTE: each request enqueues tree_height entries
+        if (treeUpdateQueue.is_full()) {
             DPRINTF(CryptoCtrl,
                 "busy due to full tree update queue, postponing %s\n",
                 formattedPacket(pkt));
@@ -390,64 +391,25 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         // schedule future event, when the crypto unit finished encrypting
         schedule(new CryptoWriteEvent(this, pkt), end);
 
-        uint64_t node_id =
-            non_leaf_nodes + pkt->getAddr() / bus_bytes / packing_factor;
-        uint64_t node_offset = pkt->getAddr() / bus_bytes % packing_factor;
-        for (int i = 0; i < tree_height; i++) {
-            Addr node_address =
-                range_integrity.start() + node_id * tree_node_bytes;
+        std::pair<bool, TreeUpdateRequest> request =
+            treeUpdateQueue.enqueue_request(pkt->getAddr());
+        if (!request.first) {
             DPRINTF(CryptoCtrl,
-                "translating address 0x%x -> integrity tree address=0x%x, "
-                "nodeid=%d, offset=%d @ integrity tree level %d\n",
-                pkt->getAddr(), node_address, node_id, node_offset, i);
-            panic_if(!range_integrity.contains(node_address),
-                "the node address 0x%x must lie within the integrity memory "
-                "range %s\n",
-                node_address, range_integrity.to_string());
-
-            // if one of the nodes is currently busy, we cannot fulfill this
-            // request
-            auto it = treeUpdateQueue.find(node_address);
-            if (it != treeUpdateQueue.end()) {
-                DPRINTF(CryptoCtrl,
-                    "busy due to existing request, postponing %s\n",
-                    formattedPacket(pkt));
-                return false;
+                "busy due to existing request, postponing %s\n",
+                formattedPacket(pkt));
+            tree_update_retry_necessary = true;
+            return false;
+        } else {
+            for (auto& node_address : request.second.node_addresses) {
+                // create packet
+                PacketPtr packet_fetch_md =
+                    createPkt(node_address, tree_node_bytes, MemCmd::ReadReq);
+                // finally send the packet
+                DPRINTF(CryptoCtrl, "launching request 0x%x packet %s\n",
+                    request.second.data_address,
+                    formattedPacket(packet_fetch_md));
+                mdcachePort.sendPacket(packet_fetch_md);
             }
-
-            // update node id
-            uint64_t parent_id = node_id / packing_factor;
-            node_offset = node_id % packing_factor;
-            node_id = parent_id;
-        }
-
-        // we are not sending packets before we are sure,
-        // we can send all of them!
-        // so we loop again
-        node_id =
-            non_leaf_nodes + pkt->getAddr() / bus_bytes / packing_factor;
-        node_offset = pkt->getAddr() / bus_bytes % packing_factor;
-        for (int i = 0; i < tree_height; i++) {
-            Addr node_address =
-                range_integrity.start() + node_id * tree_node_bytes;
-
-            // create packet
-            PacketPtr packet_fetch_md =
-                createPkt(node_address, tree_node_bytes, MemCmd::ReadReq);
-
-            // create the request in the request queue
-            treeUpdateQueue[node_address] =
-                TreeUpdateRequest{pkt->getAddr(), node_address, node_offset};
-
-            // finally send the packet
-            DPRINTF(CryptoCtrl, "launching request %d packet %s\n", i,
-                formattedPacket(packet_fetch_md));
-            mdcachePort.sendPacket(packet_fetch_md);
-
-            // update node id
-            uint64_t parent_id = node_id / packing_factor;
-            node_id = parent_id;
-            node_offset = parent_id % packing_factor;
         }
     }
 
@@ -527,22 +489,18 @@ CryptoCtrl::handleResponse(PacketPtr pkt, ResponseSource source)
                 carry = data[rightmost + k] == 0;
             }
             modifyPkt(pkt, MemCmd::WriteReq);
-            DPRINTF(CryptoCtrl, "launching request %d packet %s\n", offset,
+            DPRINTF(CryptoCtrl,
+                "launching write-after-read request packet %s\n",
                 formattedPacket(pkt));
             mdcachePort.sendPacket(pkt);
         } else {
-            // TODO: improve this, currently the map is not the right
-            // structure
-            auto it = treeUpdateQueue.find(pkt->getAddr());
-            it->second.completed_layers += 1;
-            DPRINTF(CryptoCtrl, "finished metadata write %s %s\n",
-                formattedPacket(pkt), it->second.to_string());
-            if (it->second.completed_layers >= tree_height) {
-                DPRINTF(CryptoCtrl,
-                    "all metadata writes complete for %s, deleting request "
-                    "from tree update queue\n",
-                    formattedPacket(pkt));
-                treeUpdateQueue.erase(it);
+            // forward completion event to queue
+            bool completed =
+                treeUpdateQueue.complete_request_node(pkt->getAddr());
+            if (completed && tree_update_retry_necessary) {
+                // try to retry failed requests at this point
+                cpuPort.sendRetryReq();
+                tree_update_retry_necessary = false;
             }
         }
         break;
