@@ -29,6 +29,7 @@ formattedPacket(PacketPtr pkt)
     ss << ", reqid=" << unsigned(pkt->requestorId());
     ss << ", flags=0x" << std::hex << unsigned(pkt->req->getFlags())
        << std::dec;
+    ss << ", hasdata=" << unsigned(pkt->hasData());
     ss << ")";
     return ss.str();
 }
@@ -75,8 +76,8 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
       range_integrity(params.range_integrity),
       range_leaves(params.range_leaves),
       treeUpdateQueue(TreeUpdateQueue(this, params.tree_update_buffer_size,
-          params.bus_bytes, params.packing_factor, params.tree_height,
-          params.tree_node_bytes, params.range_integrity)),
+          params.bus_bytes, params.packing_factor, params.counter_bits / 8,
+          params.tree_height, params.tree_node_bytes, params.range_integrity)),
       tree_check_buffer_size(params.tree_check_buffer_size), stats(this),
       mdcachePort(params.name + ".mdcache_side_port", this),
       cpuPort(params.name + ".cpu_side_port", this),
@@ -391,23 +392,20 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         // schedule future event, when the crypto unit finished encrypting
         schedule(new CryptoWriteEvent(this, pkt), end);
 
-        std::pair<bool, TreeUpdateRequest> request =
+        std::pair<bool, TreeUpdateRequest> response =
             treeUpdateQueue.enqueue_request(pkt->getAddr());
-        if (!request.first) {
+        if (!response.first) {
             DPRINTF(CryptoCtrl,
                 "busy due to existing request, postponing %s\n",
                 formattedPacket(pkt));
             tree_update_retry_necessary = true;
             return false;
         } else {
-            for (auto& node_address : request.second.node_addresses) {
+            for (auto& node : response.second.nodes) {
                 // create packet
                 PacketPtr packet_fetch_md =
-                    createPkt(node_address, tree_node_bytes, MemCmd::ReadReq);
+                    createPkt(node.address, tree_node_bytes, MemCmd::ReadReq);
                 // finally send the packet
-                DPRINTF(CryptoCtrl, "launching request 0x%x packet %s\n",
-                    request.second.data_address,
-                    formattedPacket(packet_fetch_md));
                 mdcachePort.sendPacket(packet_fetch_md);
             }
         }
@@ -467,28 +465,10 @@ CryptoCtrl::handleResponse(PacketPtr pkt, ResponseSource source)
         }
         break;
     case ResponseSource::MetadataCache:
-        // needs to be overworked, but for now we are implementing a simple
-        // counter update scheme
         if (pkt->isRead()) {
             // the cache has yielded the data, now we update the counters
             // and hash
-            uint8_t offset = pkt->getAddr() % packing_factor;
-            DPRINTF(CryptoCtrl,
-                "received mdcache read event address=0x%x, offset=0x%x, "
-                "data\n",
-                pkt->getAddr(), offset);
-            // next we want to update the counter at position offset, in a
-            // way that is generic with respect to counter size
-            // (byte granularity)
-            uint8_t* data = pkt->getPtr<uint8_t>();
-            uint8_t carry = 1;
-            uint8_t rightmost = offset * counter_bytes;
-            for (int k = counter_bytes - 1; k >= 0 && carry == 1; k--) {
-                data[rightmost + k] += carry;
-                // we only carry if there has been an overflow
-                carry = data[rightmost + k] == 0;
-            }
-            modifyPkt(pkt, MemCmd::WriteReq);
+            treeUpdateQueue.update_metadata(pkt);
             DPRINTF(CryptoCtrl,
                 "launching write-after-read request packet %s\n",
                 formattedPacket(pkt));

@@ -43,11 +43,38 @@ enum ResponseSource
     MetadataCache
 };
 
+struct TreeUpdateRequestNode
+{
+    Addr address;
+    uint8_t offset;
+    bool completed = false;
+
+    TreeUpdateRequestNode(Addr address, uint8_t offset)
+        : address(address), offset(offset)
+    {
+    }
+
+    bool complete(Addr address)
+    {
+        // we want to return true only when we mark this request complete for
+        // the first time
+        return !completed && (completed = address == this->address);
+        /*
+        if (!completed) {
+            completed = address == this->address;
+            return true;
+        }
+        return false;
+        */
+    }
+};
+
 struct TreeUpdateRequest
 {
     Addr data_address;
-    std::list<Addr> node_addresses = std::list<Addr>();
-    std::list<uint8_t> node_offsets = std::list<uint8_t>();
+    // complete | node address | node offset
+    std::list<TreeUpdateRequestNode> nodes =
+        std::list<TreeUpdateRequestNode>();
     uint8_t completed_layers = 0;
 
     TreeUpdateRequest(Addr data_address) : data_address(data_address)
@@ -57,27 +84,48 @@ struct TreeUpdateRequest
 
     void add_request_node(Addr node_address, uint8_t node_offset)
     {
-        node_addresses.emplace_back(node_address);
-        node_offsets.emplace_back(node_offset);
+        nodes.emplace_back(TreeUpdateRequestNode(node_address, node_offset));
     }
 
-    bool contains_request_node(Addr node_address)
+    bool complete(Addr node_address)
     {
-        for (auto& addr : node_addresses) {
-            if (addr == node_address) {
+        for (auto& node : nodes) {
+            if (node.complete(node_address)) {
+                completed_layers++;
                 return true;
             }
         }
         return false;
     }
 
+    bool contains_request_node(Addr node_address)
+    {
+        for (auto& node : nodes) {
+            if (node.address == node_address) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    uint8_t get_offset(Addr node_address)
+    {
+        for (auto& node : nodes) {
+            if (node.address == node_address) {
+                return node.offset;
+            }
+        }
+        panic("could not find node address 0x%x in request\n", node_address);
+    }
+
     std::string to_string()
     {
         std::ostringstream ss;
-        ss << "treeUpdateReq(";
+        ss << "TreeUpdateReq(";
         ss << "data_addr=0x" << std::hex << data_address << std::dec;
-        for (auto address : node_addresses) {
-            ss << ", node_addr=0x" << std::hex << address << std::dec;
+        for (auto node : nodes) {
+            ss << ", node_addr=0x" << std::hex << node.address << std::dec
+               << "@" << unsigned(node.offset) << (node.completed ? "*" : "");
         }
         ss << ", completed_layers=" << unsigned(completed_layers);
         ss << ")";
@@ -90,6 +138,7 @@ struct TreeUpdateQueue
     uint8_t size;
     uint64_t bus_bytes;
     uint64_t packing_factor;
+    uint64_t counter_bytes;
     uint64_t tree_height;
     uint64_t tree_node_bytes;
     // this part is constant with respect to system instantiation
@@ -98,10 +147,11 @@ struct TreeUpdateQueue
     std::list<TreeUpdateRequest> queue;
 
     TreeUpdateQueue(CryptoCtrl* ctrl, uint8_t size, uint64_t bus_bytes,
-        uint64_t packing_factor, uint64_t tree_height,
+        uint64_t packing_factor, uint64_t counter_bytes, uint64_t tree_height,
         uint64_t tree_node_bytes, AddrRange range_integrity)
         : size(size), bus_bytes(bus_bytes), packing_factor(packing_factor),
-          tree_height(tree_height), tree_node_bytes(tree_node_bytes),
+          counter_bytes(counter_bytes), tree_height(tree_height),
+          tree_node_bytes(tree_node_bytes),
           non_leaf_nodes((std::pow(packing_factor, tree_height) - 1) /
               (packing_factor - 1)),
           range_integrity(range_integrity)
@@ -150,6 +200,37 @@ struct TreeUpdateQueue
         return std::make_pair(true, new_request);
     }
 
+    TreeUpdateRequest& find_request(Addr node_address)
+    {
+        auto it = queue.begin();
+        while (it != queue.end() && !it->contains_request_node(node_address))
+            std::advance(it, 1);
+        panic_if(it == queue.end(),
+            "could not find element in tree update queue\n");
+        return *it;
+    }
+
+    void update_metadata(PacketPtr pkt)
+    {
+        auto node_address = pkt->getAddr();
+        auto request = find_request(node_address);
+        uint8_t offset = request.get_offset(node_address);
+        DPRINTF(CryptoCtrl, "updating 0x%x request %s offset 0x%x\n",
+            node_address, request.to_string(), offset);
+        // next we want to update the counter at position offset, in a
+        // way that is generic with respect to counter size
+        // (byte granularity)
+        uint8_t* data = pkt->getPtr<uint8_t>();
+        uint8_t carry = 1;
+        uint8_t rightmost = offset * counter_bytes;
+        for (int k = counter_bytes - 1; k >= 0 && carry == 1; k--) {
+            data[rightmost + k] += carry;
+            // we only carry if there has been an overflow
+            carry = data[rightmost + k] == 0;
+        }
+        pkt->cmd = MemCmd::WriteReq;
+    }
+
     bool contains_request_node(Addr node_address)
     {
         for (auto& request : queue) {
@@ -161,24 +242,23 @@ struct TreeUpdateQueue
 
     bool complete_request_node(Addr node_address)
     {
-        auto it = queue.begin();
-        while (it != queue.end() && !it->contains_request_node(node_address))
-            std::advance(it, 1);
-        panic_if(it == queue.end(),
-            "could not find element in tree update queue\n");
-        it->completed_layers += 1;
-        DPRINTF(CryptoCtrl,
-            "finished metadata write 0x%x (data address 0x%x)\n",
-            node_address, it->data_address);
-        if (it->completed_layers >= tree_height) {
-            DPRINTF(CryptoCtrl,
-                "all metadata writes complete for %s, deleting request "
-                "from tree update queue\n",
-                it->to_string());
-            queue.erase(it);
-            return true;
+        for (auto it = queue.begin(); it != queue.end(); it++) {
+            if (it->complete(node_address)) {
+                DPRINTF(CryptoCtrl,
+                    "finished metadata write 0x%x\n",
+                    node_address);
+                if (it->completed_layers >= tree_height) {
+                    DPRINTF(CryptoCtrl,
+                        "all metadata writes complete for %s, deleting "
+                        "request from tree update queue\n",
+                        it->to_string());
+                    queue.erase(it);
+                    return true;
+                }
+                return false;
+            }
         }
-        return false;
+        panic("could not find element in tree update queue\n");
     }
 };
 
