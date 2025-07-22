@@ -1,8 +1,6 @@
 #include "memsec/crypto_ctrl.hh"
 
 #include <cmath>
-#include <cstdint>
-#include <iterator>
 
 #include "base/trace.hh"
 #include "base/types.hh"
@@ -75,9 +73,7 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
       range_total(params.range_total), range_data(params.range_data),
       range_integrity(params.range_integrity),
       range_leaves(params.range_leaves),
-      treeUpdateQueue(TreeUpdateQueue(this, params.tree_update_buffer_size,
-          params.bus_bytes, params.packing_factor, params.counter_bits / 8,
-          params.tree_height, params.tree_node_bytes, params.range_integrity)),
+      tree_update_queue(params.tree_update_queue),
       tree_check_buffer_size(params.tree_check_buffer_size), stats(this),
       mdcachePort(params.name + ".mdcache_side_port", this),
       cpuPort(params.name + ".cpu_side_port", this),
@@ -353,7 +349,7 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
     } else {
         // if we are not ready to receive another request
         // NOTE: each request enqueues tree_height entries
-        if (treeUpdateQueue.is_full()) {
+        if (tree_update_queue->is_full()) {
             DPRINTF(CryptoCtrl,
                 "busy due to full tree update queue, postponing %s\n",
                 formattedPacket(pkt));
@@ -393,7 +389,7 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         schedule(new CryptoWriteEvent(this, pkt), end);
 
         std::pair<bool, TreeUpdateRequest> response =
-            treeUpdateQueue.enqueue_request(pkt->getAddr());
+            tree_update_queue->enqueue_request(pkt->getAddr());
         if (!response.first) {
             DPRINTF(CryptoCtrl,
                 "busy due to existing request, postponing %s\n",
@@ -468,7 +464,7 @@ CryptoCtrl::handleResponse(PacketPtr pkt, ResponseSource source)
         if (pkt->isRead()) {
             // the cache has yielded the data, now we update the counters
             // and hash
-            treeUpdateQueue.update_metadata(pkt);
+            tree_update_queue->update_metadata(pkt);
             DPRINTF(CryptoCtrl,
                 "launching write-after-read request packet %s\n",
                 formattedPacket(pkt));
@@ -476,7 +472,7 @@ CryptoCtrl::handleResponse(PacketPtr pkt, ResponseSource source)
         } else {
             // forward completion event to queue
             bool completed =
-                treeUpdateQueue.complete_request_node(pkt->getAddr());
+                tree_update_queue->complete_request_node(pkt->getAddr());
             if (completed && tree_update_retry_necessary) {
                 // try to retry failed requests at this point
                 cpuPort.sendRetryReq();

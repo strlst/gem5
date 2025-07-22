@@ -1,6 +1,28 @@
 from m5.objects.ClockedObject import ClockedObject
+from m5.objects.SimObject import SimObject
 from m5.params import *
 from m5.proxy import *
+
+
+class TreeUpdateQueue(SimObject):
+    type = "TreeUpdateQueue"
+    cxx_header = "memsec/tree_update.hh"
+    cxx_class = "gem5::TreeUpdateQueue"
+
+    size = Param.Int(
+        (
+            "amount of ongoing integrity tree update (during memory writes)"
+            " requests that can be in-flight at the same time"
+        ),
+    )
+    bus_bytes = Param.Int("bus size in bytes")
+    packing_factor = Param.Int(
+        "amount of counters which form one node (or MAC)"
+    )
+    counter_bytes = Param.Int("AES counter value size in bytes")
+    tree_height = Param.Int("integrity tree layer count")
+    tree_node_bytes = Param.Int("integrity tree node size in bytes")
+    range_integrity = Param.AddrRange("integrity region memory range")
 
 
 class CryptoCtrl(ClockedObject):
@@ -8,7 +30,14 @@ class CryptoCtrl(ClockedObject):
     cxx_header = "memsec/crypto_ctrl.hh"
     cxx_class = "gem5::CryptoCtrl"
 
+    # reference to parent system
     system = Param.System(Parent.any, "system object")
+
+    # subcomponent
+    tree_update_queue = Param.TreeUpdateQueue(
+        TreeUpdateQueue(),
+        "tree update queue component",
+    )
 
     total_memory_addresses = Param.Int(0, "total memory size in bytes")
     bus_bytes = Param.Int(0, "bus size in bytes")

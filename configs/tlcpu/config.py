@@ -123,6 +123,12 @@ def parse_args():
         default="16KiB",
         help="Metadata cache size (default: 16KiB)",
     )
+    parser.add_argument(
+        "--tree-update-buffer-size",
+        default=32,
+        type=int,
+        help="Number of permissible in-flight requests (default: 32)",
+    )
 
     return parser.parse_args()
 
