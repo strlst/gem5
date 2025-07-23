@@ -4,10 +4,10 @@ from m5.params import *
 from m5.proxy import *
 
 
-class TreeUpdateQueue(SimObject):
-    type = "TreeUpdateQueue"
+class IntTRB(SimObject):
+    type = "IntTRB"
     cxx_header = "memsec/tree_update.hh"
-    cxx_class = "gem5::TreeUpdateQueue"
+    cxx_class = "gem5::IntTRB"
 
     size = Param.Int(
         (
@@ -34,9 +34,9 @@ class CryptoCtrl(ClockedObject):
     system = Param.System(Parent.any, "system object")
 
     # subcomponent
-    tree_update_queue = Param.TreeUpdateQueue(
-        TreeUpdateQueue(),
-        "tree update queue component",
+    int_trb = Param.IntTRB(
+        IntTRB(),
+        "integrity tree request buffer component",
     )
 
     total_memory_addresses = Param.Int(0, "total memory size in bytes")

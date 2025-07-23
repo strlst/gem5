@@ -8,21 +8,21 @@
 
 #include "base/addr_range.hh"
 #include "base/types.hh"
-#include "debug/TreeUpdateQueue.hh"
+#include "debug/IntTRB.hh"
 #include "mem/packet.hh"
-#include "params/TreeUpdateQueue.hh"
+#include "params/IntTRB.hh"
 #include "sim/sim_object.hh"
 
 namespace gem5
 {
 
-struct TreeUpdateRequestNode
+struct IntTreeReqNode
 {
     Addr address;
     uint8_t offset;
     bool completed = false;
 
-    TreeUpdateRequestNode(Addr address, uint8_t offset)
+    IntTreeReqNode(Addr address, uint8_t offset)
         : address(address), offset(offset)
     {
     }
@@ -42,22 +42,23 @@ struct TreeUpdateRequestNode
     }
 };
 
-struct TreeUpdateRequest
+struct IntTreeReq
 {
     Addr data_address;
     // complete | node address | node offset
-    std::list<TreeUpdateRequestNode> nodes =
-        std::list<TreeUpdateRequestNode>();
+    std::list<IntTreeReqNode> nodes =
+        std::list<IntTreeReqNode>();
     uint8_t completed_layers = 0;
 
-    TreeUpdateRequest(Addr data_address) : data_address(data_address)
+    IntTreeReq(Addr data_address) : data_address(data_address)
     {
         panic_if(sizeof(Addr) != sizeof(uint64_t), "unsupported addr size\n");
     }
 
     void add_request_node(Addr node_address, uint8_t node_offset)
     {
-        nodes.emplace_back(TreeUpdateRequestNode(node_address, node_offset));
+        nodes.emplace_back(
+            IntTreeReqNode(node_address, node_offset));
     }
 
     bool complete(Addr node_address)
@@ -94,7 +95,7 @@ struct TreeUpdateRequest
     std::string to_string()
     {
         std::ostringstream ss;
-        ss << "TreeUpdateReq(";
+        ss << "IntegrityTreeReq(";
         ss << "data_addr=0x" << std::hex << data_address << std::dec;
         for (auto node : nodes) {
             ss << ", node_addr=0x" << std::hex << node.address << std::dec
@@ -106,7 +107,7 @@ struct TreeUpdateRequest
     }
 };
 
-class TreeUpdateQueue : public SimObject
+class IntTRB : public SimObject
 {
   private:
     uint8_t size;
@@ -118,15 +119,15 @@ class TreeUpdateQueue : public SimObject
     // this part is constant with respect to system instantiation
     const uint64_t non_leaf_nodes;
     AddrRange range_integrity;
-    std::list<TreeUpdateRequest> queue;
+    std::list<IntTreeReq> queue;
 
   public:
-    TreeUpdateQueue(const TreeUpdateQueueParams& params);
+    IntTRB(const IntTRBParams& params);
 
     bool is_full() { return queue.size() >= size; }
 
-    std::pair<bool, TreeUpdateRequest> enqueue_request(Addr data_address);
-    TreeUpdateRequest& find_request(Addr node_address);
+    std::pair<bool, IntTreeReq> enqueue_request(Addr data_address);
+    IntTreeReq& find_request(Addr node_address);
 
     void update_metadata(PacketPtr pkt);
     bool contains_request_node(Addr node_address);

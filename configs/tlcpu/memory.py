@@ -139,14 +139,14 @@ class MemorySystem:
         system.crypto_ctrl.tree_node_bytes = tree_node_bytes
         system.crypto_ctrl.tree_height = tree_height
 
-        tuq = system.crypto_ctrl.tree_update_queue
-        tuq.size = args.tree_update_buffer_size
-        tuq.bus_bytes = bus_bytes
-        tuq.packing_factor = args.crypto_packing_factor
-        tuq.counter_bytes = args.crypto_counter_bits // 8
-        tuq.tree_height = tree_height
-        tuq.tree_node_bytes = tree_node_bytes
-        tuq.range_integrity = system.crypto_ctrl.range_integrity
+        int_trb = system.crypto_ctrl.int_trb
+        int_trb.size = args.tree_update_buffer_size
+        int_trb.bus_bytes = bus_bytes
+        int_trb.packing_factor = args.crypto_packing_factor
+        int_trb.counter_bytes = args.crypto_counter_bits // 8
+        int_trb.tree_height = tree_height
+        int_trb.tree_node_bytes = tree_node_bytes
+        int_trb.range_integrity = system.crypto_ctrl.range_integrity
 
         # configure metadata cache
         system.metadata_cache.assoc = int(

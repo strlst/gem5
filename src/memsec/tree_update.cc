@@ -1,33 +1,33 @@
+#include <cstdint>
+
+#include "base/trace.hh"
+#include "debug/IntTRB.hh"
 #include "tree_update.hh"
 
 namespace gem5
 {
 
-TreeUpdateQueue::TreeUpdateQueue(const TreeUpdateQueueParams& params)
+IntTRB::IntTRB(const IntTRBParams& params)
     : SimObject(params), size(params.size), bus_bytes(params.bus_bytes),
-        packing_factor(params.packing_factor),
-        counter_bytes(params.counter_bytes),
-        tree_height(params.tree_height),
-        tree_node_bytes(params.tree_node_bytes),
-        non_leaf_nodes(
-            (std::pow(params.packing_factor, params.tree_height) - 1) /
-            (params.packing_factor - 1)),
-        range_integrity(params.range_integrity)
+      packing_factor(params.packing_factor),
+      counter_bytes(params.counter_bytes), tree_height(params.tree_height),
+      tree_node_bytes(params.tree_node_bytes),
+      non_leaf_nodes(
+          (std::pow(params.packing_factor, params.tree_height) - 1) /
+          (params.packing_factor - 1)),
+      range_integrity(params.range_integrity)
 {
-    DPRINTF(TreeUpdateQueue,
-        "Created tree update queue with properties\n");
-    DPRINTF(TreeUpdateQueue, "\t\t\t%d queue size\n", params.size);
-    DPRINTF(TreeUpdateQueue,
+    DPRINTF(IntTRB, "Created tree update queue with properties\n");
+    DPRINTF(IntTRB, "\t\t\t%d queue size\n", params.size);
+    DPRINTF(IntTRB,
         "\t\t\t%d tree node bytes (%d height, %d counter bytes, %d non "
         "leaf nodes)\n",
         params.tree_node_bytes, params.tree_height, params.counter_bytes,
         non_leaf_nodes);
-    DPRINTF(TreeUpdateQueue, "\t\t\t%s memory range (integrity)\n",
-        params.range_integrity);
 }
 
-std::pair<bool, TreeUpdateRequest>
-TreeUpdateQueue::enqueue_request(Addr data_address)
+std::pair<bool, IntTreeReq>
+IntTRB::enqueue_request(Addr data_address)
 {
     // NOTE: the latency of address translation can probably be hidden in
     // case packing_factor is not a power of 2, and if it is, the
@@ -35,12 +35,12 @@ TreeUpdateQueue::enqueue_request(Addr data_address)
     uint64_t node_id =
         non_leaf_nodes + data_address / bus_bytes / packing_factor;
     uint8_t node_offset = data_address / bus_bytes % packing_factor;
-    TreeUpdateRequest new_request = TreeUpdateRequest(data_address);
-    for (int i = 0; i < tree_height; i++) {
+    IntTreeReq new_request = IntTreeReq(data_address);
+    for (int i = 0; i <= tree_height; i++) {
         // compute actual node address
         Addr node_address =
             range_integrity.start() + node_id * tree_node_bytes;
-        DPRINTF(TreeUpdateQueue,
+        DPRINTF(IntTRB,
             "translating address 0x%x -> integrity tree address=0x%x, "
             "nodeid=%d, offset=%d @ integrity tree level %d\n",
             data_address, node_address, node_id, node_offset, i);
@@ -67,8 +67,8 @@ TreeUpdateQueue::enqueue_request(Addr data_address)
     return std::make_pair(true, new_request);
 }
 
-TreeUpdateRequest&
-TreeUpdateQueue::find_request(Addr node_address)
+IntTreeReq&
+IntTRB::find_request(Addr node_address)
 {
     auto it = queue.begin();
     while (it != queue.end() && !it->contains_request_node(node_address))
@@ -79,13 +79,13 @@ TreeUpdateQueue::find_request(Addr node_address)
 }
 
 void
-TreeUpdateQueue::update_metadata(PacketPtr pkt)
+IntTRB::update_metadata(PacketPtr pkt)
 {
     auto node_address = pkt->getAddr();
     auto request = find_request(node_address);
     uint8_t offset = request.get_offset(node_address);
-    DPRINTF(TreeUpdateQueue, "updating 0x%x request %s offset 0x%x\n",
-        node_address, request.to_string(), offset);
+    DPRINTF(IntTRB, "updating 0x%x request %s offset 0x%x\n", node_address,
+        request.to_string(), offset);
     // next we want to update the counter at position offset, in a
     // way that is generic with respect to counter size
     // (byte granularity)
@@ -101,7 +101,7 @@ TreeUpdateQueue::update_metadata(PacketPtr pkt)
 }
 
 bool
-TreeUpdateQueue::contains_request_node(Addr node_address)
+IntTRB::contains_request_node(Addr node_address)
 {
     for (auto& request : queue) {
         if (request.contains_request_node(node_address))
@@ -111,15 +111,13 @@ TreeUpdateQueue::contains_request_node(Addr node_address)
 };
 
 bool
-TreeUpdateQueue::complete_request_node(Addr node_address)
+IntTRB::complete_request_node(Addr node_address)
 {
     for (auto it = queue.begin(); it != queue.end(); it++) {
         if (it->complete(node_address)) {
-            DPRINTF(TreeUpdateQueue,
-                "finished metadata write 0x%x\n",
-                node_address);
-            if (it->completed_layers >= tree_height) {
-                DPRINTF(TreeUpdateQueue,
+            DPRINTF(IntTRB, "finished metadata write 0x%x\n", node_address);
+            if (it->completed_layers >= tree_height + 1) {
+                DPRINTF(IntTRB,
                     "all metadata writes complete for %s, deleting "
                     "request from tree update queue\n",
                     it->to_string());

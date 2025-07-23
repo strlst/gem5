@@ -81,10 +81,8 @@ class CryptoCtrl : public ClockedObject
     AddrRange range_integrity;
     AddrRange range_leaves;
 
-    TreeUpdateQueue *tree_update_queue;
+    IntTRB* int_trb;
     bool tree_update_retry_necessary = false;
-    std::list<TreeCheckRequest> treeCheckQueue;
-    uint64_t tree_check_buffer_size;
 
     struct PktStats : public Group
     {
@@ -281,11 +279,6 @@ class CryptoCtrl : public ClockedObject
      * Create a Packet copy with a different command.
      */
     PacketPtr createPktFromPkt(PacketPtr pkt, MemCmd cmd);
-
-    /**
-     * Change the command of a Packet.
-     */
-    void modifyPkt(PacketPtr pkt, MemCmd cmd);
 
     /**
      * Get a port with a given name and index. This is used at

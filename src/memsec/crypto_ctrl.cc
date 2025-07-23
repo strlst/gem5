@@ -1,11 +1,14 @@
 #include "memsec/crypto_ctrl.hh"
 
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 
 #include "base/trace.hh"
 #include "base/types.hh"
 #include "crypto_ctrl.hh"
 #include "crypto_event.hh"
+#include "debug/CryptoCtrl.hh"
 #include "mem/packet.hh"
 #include "mem/request.hh"
 #include "sim/clocked_object.hh"
@@ -49,13 +52,9 @@ CryptoCtrl::createPkt(Addr addr, size_t size, MemCmd cmd)
 inline PacketPtr
 CryptoCtrl::createPktFromPkt(PacketPtr pkt, MemCmd cmd)
 {
-    return createPkt(pkt->getAddr(), pkt->getSize(), cmd);
-}
-
-inline void
-CryptoCtrl::modifyPkt(PacketPtr pkt, MemCmd cmd)
-{
-    pkt->cmd = cmd;
+    PacketPtr new_pkt = createPkt(pkt->getAddr(), pkt->getSize(), cmd);
+    memcpy(new_pkt->getPtr<uint8_t>(), pkt->getPtr<uint8_t>(), pkt->getSize());
+    return new_pkt;
 }
 
 CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
@@ -72,9 +71,7 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
       tree_node_bytes(params.tree_node_bytes), bus_bytes(params.bus_bytes),
       range_total(params.range_total), range_data(params.range_data),
       range_integrity(params.range_integrity),
-      range_leaves(params.range_leaves),
-      tree_update_queue(params.tree_update_queue),
-      tree_check_buffer_size(params.tree_check_buffer_size), stats(this),
+      range_leaves(params.range_leaves), int_trb(params.int_trb), stats(this),
       mdcachePort(params.name + ".mdcache_side_port", this),
       cpuPort(params.name + ".cpu_side_port", this),
       memPort(params.name + ".mem_side_port", this)
@@ -332,32 +329,35 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
     DPRINTF(CryptoCtrl, "handleRequest %s\n", formattedPacket(pkt));
 
     if (pkt->isRead()) {
+        // keep track of reads
+        stats.reads++;
+
         // if we are not ready to receive another request
         // NOTE: each request enqueues tree_height entries
-        if (treeCheckQueue.size() >= tree_height * tree_check_buffer_size) {
+        // TODO: tree check queue needs to be reworked like tree update queue
+        /*
+        if (treeCheckQueue.size() >= tree_height) {
             DPRINTF(CryptoCtrl,
                 "busy due to full tree check queue, postponing %s\n",
                 formattedPacket(pkt));
             return false;
         }
-
-        // keep track of reads
-        stats.reads++;
+        */
         // immediately forward packet to mem port
         // (reads don't require processing)
         memPort.sendPacket(pkt);
     } else {
+        // keep track of writes
+        stats.writes++;
+
         // if we are not ready to receive another request
         // NOTE: each request enqueues tree_height entries
-        if (tree_update_queue->is_full()) {
+        if (int_trb->is_full()) {
             DPRINTF(CryptoCtrl,
                 "busy due to full tree update queue, postponing %s\n",
                 formattedPacket(pkt));
             return false;
         }
-
-        // keep track of writes
-        stats.writes++;
 
         // this would be the correct time to manipulate a packer during a write
         // AESEncrypt(pkt);
@@ -374,22 +374,8 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         }
         */
 
-        // consider when the incoming request becomes servicable
-        // if the unit might be busy
-        Tick start = curTick() > aes_enc_ready ? curTick() : aes_enc_ready;
-        int iterations = pkt->getSize() / aes_block_bytes;
-        // every II we schedule an iteration, considering ramp-up and ramp-down
-        Tick delay = iterations * aes_enc_ii + (aes_enc_cycles - aes_enc_ii);
-        Tick end = start + delay;
-        // consider how long the current operations blocks other incoming
-        // requests
-        aes_enc_ready = start + (iterations - 1) * aes_enc_ii;
-
-        // schedule future event, when the crypto unit finished encrypting
-        schedule(new CryptoWriteEvent(this, pkt), end);
-
-        std::pair<bool, TreeUpdateRequest> response =
-            tree_update_queue->enqueue_request(pkt->getAddr());
+        std::pair<bool, IntTreeReq> response =
+            int_trb->enqueue_request(pkt->getAddr());
         if (!response.first) {
             DPRINTF(CryptoCtrl,
                 "busy due to existing request, postponing %s\n",
@@ -397,10 +383,29 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
             tree_update_retry_necessary = true;
             return false;
         } else {
+            // consider when the incoming request becomes servicable
+            // if the unit might be busy
+            Tick start =
+                curTick() > aes_enc_ready ? curTick() : aes_enc_ready;
+            int iterations = pkt->getSize() / aes_block_bytes;
+            // every II we schedule an iteration, considering ramp-up
+            // and ramp-down
+            Tick delay =
+                iterations * aes_enc_ii + (aes_enc_cycles - aes_enc_ii);
+            Tick end = start + delay;
+            // consider how long the current operations blocks other incoming
+            // requests
+            aes_enc_ready = start + (iterations - 1) * aes_enc_ii;
+
+            // schedule future event, when the crypto unit finished encrypting
+            schedule(new CryptoWriteEvent(this, pkt), end);
+
             for (auto& node : response.second.nodes) {
                 // create packet
                 PacketPtr packet_fetch_md =
                     createPkt(node.address, tree_node_bytes, MemCmd::ReadReq);
+                DPRINTF(CryptoCtrl, "created packet read packet %s\n",
+                    formattedPacket(packet_fetch_md));
                 // finally send the packet
                 mdcachePort.sendPacket(packet_fetch_md);
             }
@@ -464,17 +469,18 @@ CryptoCtrl::handleResponse(PacketPtr pkt, ResponseSource source)
         if (pkt->isRead()) {
             // the cache has yielded the data, now we update the counters
             // and hash
-            tree_update_queue->update_metadata(pkt);
+            PacketPtr new_pkt = createPktFromPkt(pkt, MemCmd::WriteReq);
             DPRINTF(CryptoCtrl,
-                "launching write-after-read request packet %s\n",
-                formattedPacket(pkt));
-            mdcachePort.sendPacket(pkt);
+                "created write-after-read request packet %s\n",
+                formattedPacket(new_pkt));
+            int_trb->update_metadata(new_pkt);
+            mdcachePort.sendPacket(new_pkt);
         } else {
             // forward completion event to queue
-            bool completed =
-                tree_update_queue->complete_request_node(pkt->getAddr());
+            bool completed = int_trb->complete_request_node(pkt->getAddr());
             if (completed && tree_update_retry_necessary) {
                 // try to retry failed requests at this point
+                DPRINTF(CryptoCtrl, "retry from tree update queue\n");
                 cpuPort.sendRetryReq();
                 tree_update_retry_necessary = false;
             }
