@@ -7,12 +7,11 @@
 #include "base/trace.hh"
 #include "base/types.hh"
 #include "crypto_ctrl.hh"
-#include "crypto_event.hh"
 #include "debug/CryptoCtrl.hh"
 #include "mem/packet.hh"
 #include "mem/request.hh"
+#include "memsec/crypto_event.hh"
 #include "sim/clocked_object.hh"
-#include "sim/cur_tick.hh"
 #include "sim/system.hh"
 
 namespace gem5
@@ -60,12 +59,12 @@ CryptoCtrl::createPktFromPkt(PacketPtr pkt, MemCmd cmd)
 CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
     : ClockedObject(params), sys(params.system),
       requestorId(sys->getRequestorId(this)), aes_enc_ready(0),
-      aes_dec_ready(0), aes_block_bytes(params.aes_block_bits / 8),
+      aes_dec_ready(0), mac_ready(0),
+      aes_block_bytes(params.aes_block_bits / 8),
+      counter_bytes(params.counter_bits / 8), mac_bytes(params.mac_bits / 8),
       aes_enc_cycles(params.aes_enc_cycles),
       aes_dec_cycles(params.aes_dec_cycles), aes_enc_ii(params.aes_enc_ii),
-      aes_dec_ii(params.aes_dec_ii), counter_bits(params.counter_bits),
-      counter_bytes(params.counter_bits / 8), mac_bits(params.mac_bits),
-      mac_bytes(params.mac_bits / 8), mac_cycles(params.mac_cycles),
+      aes_dec_ii(params.aes_dec_ii), mac_cycles(params.mac_cycles),
       mac_ii(params.mac_ii), packing_factor(params.packing_factor),
       tree_height(params.tree_height),
       tree_node_bytes(params.tree_node_bytes), bus_bytes(params.bus_bytes),
@@ -81,7 +80,7 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
         params.range_total.size(),
         (double)params.range_total.size() / 1024.f / 1024.f);
     DPRINTF(CryptoCtrl, "\t\t\t%d aes block bits (%d bytes)\n",
-        aes_block_bytes * 8, aes_block_bytes);
+        aes_block_bits, aes_block_bytes);
     DPRINTF(CryptoCtrl, "\t\t\t%d aes encryption cycles (%d ii)\n",
         aes_enc_cycles, aes_enc_ii);
     DPRINTF(CryptoCtrl, "\t\t\t%d aes decryption cycles (%d ii)\n",
@@ -89,6 +88,7 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
     DPRINTF(CryptoCtrl, "\t\t\t%d counter bits (%d bytes)\n", counter_bits,
         counter_bytes);
     DPRINTF(CryptoCtrl, "\t\t\t%d mac bits (%d bytes)\n", mac_bits, mac_bytes);
+    DPRINTF(CryptoCtrl, "\t\t\t%d mac cycles (%d ii)\n", mac_cycles, mac_ii);
     DPRINTF(CryptoCtrl,
         "\t\t\t%d integrity tree node bits (%d bytes, %d packing factor, %d "
         "height)\n",
@@ -327,40 +327,27 @@ bool
 CryptoCtrl::handleRequest(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "handleRequest %s\n", formattedPacket(pkt));
-
     if (pkt->isRead()) {
         // keep track of reads
         stats.reads++;
+    } else {
+        // keep track of writes
+        stats.writes++;
+    }
 
-        // if we are not ready to receive another request
-        // NOTE: each request enqueues tree_height entries
-        // TODO: tree check queue needs to be reworked like tree update queue
-        /*
-        if (treeCheckQueue.size() >= tree_height) {
-            DPRINTF(CryptoCtrl,
-                "busy due to full tree check queue, postponing %s\n",
-                formattedPacket(pkt));
-            return false;
-        }
-        */
+    // if we are not ready to receive another request
+    if (int_trb->is_full()) {
+        DPRINTF(CryptoCtrl,
+            "busy due to full tree update queue, postponing %s\n",
+            formattedPacket(pkt));
+        return false;
+    }
+
+    if (pkt->isRead()) {
         // immediately forward packet to mem port
         // (reads don't require processing)
         memPort.sendPacket(pkt);
     } else {
-        // keep track of writes
-        stats.writes++;
-
-        // if we are not ready to receive another request
-        // NOTE: each request enqueues tree_height entries
-        if (int_trb->is_full()) {
-            DPRINTF(CryptoCtrl,
-                "busy due to full tree update queue, postponing %s\n",
-                formattedPacket(pkt));
-            return false;
-        }
-
-        // this would be the correct time to manipulate a packer during a write
-        // AESEncrypt(pkt);
         /*
         // assume multiples of 64 bytes
         const uint64_t mask = 0xFFFFFFFFFFFFFFFF;
@@ -375,31 +362,18 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         */
 
         std::pair<bool, IntTreeReq> response =
-            int_trb->enqueue_request(pkt->getAddr());
+            int_trb->enqueue_request(pkt->getAddr(), false);
         if (!response.first) {
+            tree_update_retry_necessary = true;
             DPRINTF(CryptoCtrl,
                 "busy due to existing request, postponing %s\n",
                 formattedPacket(pkt));
-            tree_update_retry_necessary = true;
             return false;
         } else {
-            // consider when the incoming request becomes servicable
-            // if the unit might be busy
-            Tick start =
-                curTick() > aes_enc_ready ? curTick() : aes_enc_ready;
-            int iterations = pkt->getSize() / aes_block_bytes;
-            // every II we schedule an iteration, considering ramp-up
-            // and ramp-down
-            Tick delay =
-                iterations * aes_enc_ii + (aes_enc_cycles - aes_enc_ii);
-            Tick end = start + delay;
-            // consider how long the current operations blocks other incoming
-            // requests
-            aes_enc_ready = start + (iterations - 1) * aes_enc_ii;
+            // decryption
+            scheduleAESEncryptOp(pkt);
 
-            // schedule future event, when the crypto unit finished encrypting
-            schedule(new CryptoWriteEvent(this, pkt), end);
-
+            // integrity verification
             for (auto& node : response.second.nodes) {
                 // create packet
                 PacketPtr packet_fetch_md =
@@ -420,6 +394,7 @@ CryptoCtrl::CryptoWrite(PacketPtr pkt)
 {
     // for now ignore return value
     memPort.sendPacket(pkt);
+    scheduleMACOp(pkt, true);
 }
 
 bool
@@ -431,33 +406,9 @@ CryptoCtrl::handleResponse(PacketPtr pkt, ResponseSource source)
     switch (source) {
     case ResponseSource::MemoryController:
         if (pkt->isRead()) {
-            // consider when the incoming request becomes servicable,
-            // if the unit might be busy
-            Tick start =
-                curTick() > aes_dec_ready ? curTick() : aes_dec_ready;
-            int iterations = pkt->getSize() / aes_block_bytes;
-            // every II we schedule an iteration, considering ramp-up and
-            // ramp-down
-            Tick delay =
-                iterations * aes_dec_ii + (aes_dec_cycles - aes_dec_ii);
-            Tick end = start + delay;
-            // consider how long the current operations blocks other incoming
-            // requests
-            aes_dec_ready = start + (iterations - 1) * aes_dec_ii;
-
-            // if data should be processed, now would be the time to process it
-            // AESDecrypt(pkt);
-            /*
-                // print data
-                uint8_t* byte = pkt->getPtr<uint8_t>();
-                for (int i = 0; i < pkt->getSize(); i++) {
-                    printf("%.02x", *(byte++));
-                }
-                printf("\n");
-                */
-
-            //schedule(new AESDecryptEvent(this, pkt), clockEdge(delay));
-            schedule(new CryptoReadEvent(this, pkt), end);
+            scheduleAESDecryptOp(pkt);
+            // TODO: evaluate
+            scheduleMACOp(pkt, true);
 
             // TODO: implement CIRead (non-blocking) here
         } else {
@@ -478,11 +429,9 @@ CryptoCtrl::handleResponse(PacketPtr pkt, ResponseSource source)
         } else {
             // forward completion event to queue
             bool completed = int_trb->complete_request_node(pkt->getAddr());
-            if (completed && tree_update_retry_necessary) {
-                // try to retry failed requests at this point
-                DPRINTF(CryptoCtrl, "retry from tree update queue\n");
-                cpuPort.sendRetryReq();
-                tree_update_retry_necessary = false;
+            DPRINTF(CryptoCtrl, "\n");
+            if (completed) {
+                scheduleMACOp(pkt, false);
             }
         }
         break;
@@ -496,6 +445,28 @@ CryptoCtrl::CryptoRead(PacketPtr pkt)
 {
     // for now ignore return value
     cpuPort.sendPacket(pkt);
+}
+
+void
+CryptoCtrl::DataMACUpdate(PacketPtr pkt)
+{
+    DPRINTF(CryptoCtrl, "finished data MAC update %s\n", formattedPacket(pkt));
+    // theoretically we would update the MAC here
+}
+
+void
+CryptoCtrl::IntegrityMACUpdate(PacketPtr pkt)
+{
+    DPRINTF(CryptoCtrl, "finished integrity MAC update %s\n",
+        formattedPacket(pkt));
+    // theoretically we would update the MAC here
+    int_trb->release_request(pkt->getAddr());
+    if (tree_update_retry_necessary) {
+        tree_update_retry_necessary = false;
+        // try to retry failed requests at this point
+        DPRINTF(CryptoCtrl, "retry from tree update queue\n");
+        cpuPort.sendRetryReq();
+    }
 }
 
 void
@@ -516,6 +487,74 @@ void
 CryptoCtrl::sendRangeChange()
 {
     cpuPort.sendRangeChange();
+}
+
+void
+CryptoCtrl::scheduleAESEncryptOp(PacketPtr pkt)
+{
+    // consider when the incoming request becomes servicable
+    // if the unit might be busy
+    Tick start = curTick() > aes_enc_ready ? curTick() : aes_enc_ready;
+    int iterations = pkt->getSize() / aes_block_bytes;
+    // every II we schedule an iteration, considering ramp-up
+    // and ramp-down
+    Tick delay = CYCLES_TO_TICKS(iterations * aes_enc_ii +
+        (aes_enc_cycles - aes_enc_ii));
+    Tick end = start + delay;
+    // consider how long the current operations blocks other incoming
+    // requests
+    aes_enc_ready = start + (iterations - 1) * CYCLES_TO_TICKS(aes_enc_ii);
+
+    // this would be the correct time to manipulate a packer during a write
+    // AESEncrypt(pkt);
+    // schedule future event, when the crypto unit finished encrypting
+    schedule(new CryptoWriteEvent(this, pkt), end);
+}
+
+void
+CryptoCtrl::scheduleAESDecryptOp(PacketPtr pkt)
+{
+    // consider when the incoming request becomes servicable,
+    // if the unit might be busy
+    Tick start = curTick() > aes_dec_ready ? curTick() : aes_dec_ready;
+    int iterations = pkt->getSize() / aes_block_bytes;
+    // every II we schedule an iteration, considering ramp-up and
+    // ramp-down
+    Tick delay = CYCLES_TO_TICKS(iterations * aes_dec_ii +
+        (aes_dec_cycles - aes_dec_ii));
+    Tick end = start + delay;
+    // consider how long the current operations blocks other incoming
+    // requests
+    aes_dec_ready = start + (iterations - 1) * CYCLES_TO_TICKS(aes_dec_ii);
+
+    // if data should be processed, now would be the time to process it
+    // AESDecrypt(pkt);
+    /*
+        // print data
+        uint8_t* byte = pkt->getPtr<uint8_t>();
+        for (int i = 0; i < pkt->getSize(); i++) {
+            printf("%.02x", *(byte++));
+        }
+        printf("\n");
+    */
+
+    //schedule(new AESDecryptEvent(this, pkt), clockEdge(delay));
+    schedule(new CryptoReadEvent(this, pkt), end);
+}
+
+void
+CryptoCtrl::scheduleMACOp(PacketPtr pkt, bool is_data_mac)
+{
+    Tick start = curTick() > mac_ready ? curTick() : mac_ready;
+    Tick end = start + CYCLES_TO_TICKS(mac_cycles);
+    // consider how long the current operations blocks other
+    // incoming requests
+    mac_ready = start + CYCLES_TO_TICKS(mac_ii);
+    if (is_data_mac) {
+        schedule(new DataMACUpdateEvent(this, pkt), end);
+    } else {
+        schedule(new IntegrityMACUpdateEvent(this, pkt), end);
+    }
 }
 
 } // namespace gem5

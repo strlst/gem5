@@ -33,6 +33,24 @@ class CryptoCtrl(ClockedObject):
     # reference to parent system
     system = Param.System(Parent.any, "system object")
 
+    aes_enc_cycles = Param.Cycles(
+        80, "AES-CTR encryption operation cycle delay per block"
+    )
+    aes_dec_cycles = Param.Cycles(
+        80, "AES-CTR decryption operation cycle delay per block"
+    )
+    aes_enc_ii = Param.Cycles(
+        20, "AES-CTR encryption operation initiation interval per block"
+    )
+    aes_dec_ii = Param.Cycles(
+        20, "AES-CTR decryption operation initiation interval per block"
+    )
+    aes_block_bits = Param.Int(128, "AES-CTR block size in bits")
+    counter_bits = Param.Int(56, "AES counter value size in bits")
+    mac_bits = Param.Int(64, "MAC resulting size in bits")
+    mac_cycles = Param.Cycles(40, "MAC operation cycle delay per block")
+    mac_ii = Param.Cycles(10, "MAC operation initiation interval per block")
+
     # subcomponent
     int_trb = Param.IntTRB(
         IntTRB(),
@@ -41,29 +59,9 @@ class CryptoCtrl(ClockedObject):
 
     total_memory_addresses = Param.Int(0, "total memory size in bytes")
     bus_bytes = Param.Int(0, "bus size in bytes")
-    # default parameters sourced from
-    # https://ieeexplore.ieee.org/document/7019004
-    aes_enc_cycles = Param.Cycles(
-        336, "AES-CTR encryption operation cycle delay per block"
-    )
-    aes_dec_cycles = Param.Cycles(
-        216, "AES-CTR decryption operation cycle delay per block"
-    )
-    aes_enc_ii = Param.Cycles(
-        336, "AES-CTR encryption operation initiation interval per block"
-    )
-    aes_dec_ii = Param.Cycles(
-        216, "AES-CTR decryption operation initiation interval per block"
-    )
-    aes_block_bits = Param.Int(128, "AES-CTR block size in bits")
-    counter_bits = Param.Int(56, "AES counter value size in bits")
-    mac_bits = Param.Int(64, "MAC resulting size in bits")
     packing_factor = Param.Int(
         8, "amount of counters which form one node (or MAC)"
     )
-    # TODO: find practical values for MAC operation durations
-    mac_cycles = Param.Cycles(200, "MAC operation cycle delay per block")
-    mac_ii = Param.Cycles(200, "MAC operation initiation interval per block")
     tree_node_bytes = Param.Int(0, "integrity tree node size in bytes")
     tree_height = Param.Int(0, "integrity tree layer count")
     tree_check_buffer_size = Param.Int(

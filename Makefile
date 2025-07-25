@@ -5,12 +5,12 @@ BINARY:=tests/test-progs/matmul/bin/riscv/linux/matmul
 #BINARY:=tests/test-progs/memscan/bin/riscv/linux/memscan
 GEM5_PIPEVIEW:=--debug-flags=O3PipeView --debug-start=0 --debug-file=trace.out
 GEM5_CONFIG:=configs/tlcpu/config.py --l1i-size=1KiB --l1d-size=1KiB --l2-size=2KiB --no-l3 --ooo --num-cores=1 --memsec
-GEM5_CONFIG_AES:=--crypto-aes-block-bits=128 --crypto-aes-enc-cycles=336 --crypto-aes-dec-cycles=216 --crypto-aes-enc-ii=336 --crypto-aes-dec-ii=216
-GEM5_CONFIG_MAC:=--crypto-mac-cycles=200 --crypto-mac-ii=200
+GEM5_CONFIG_AES:=--crypto-aes-block-bits=128 --crypto-aes-enc-cycles=80 --crypto-aes-dec-cycles=80 --crypto-aes-enc-ii=20 --crypto-aes-dec-ii=20
+GEM5_CONFIG_MAC:=--crypto-mac-cycles=40 --crypto-mac-ii=10
 GEM5_CONFIG_CRYPTO:=--crypto-counter-bits=56 --crypto-mac-bits=64 --crypto-packing-factor=8 --metadata-cache-size=16KiB
 PIPEVIEW:=util/o3-pipeview.py
 PIPEVIEW_CONFIG:=-c 1000 -o m5out/pipeview.out --color m5out/trace.out
-DEBUG_FLAGS:=--debug-flags=CryptoCtrl,IntTRB#,Cache,DRAMsim3
+DEBUG_FLAGS:=--debug-flags=CryptoCtrl,IntTRB#,O3CPUAll,Cache,DRAMsim3
 REMOTE_HOSTNAME:=tlml003
 REMOTE_DIR:=~/gem5
 

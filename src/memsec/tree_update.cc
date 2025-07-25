@@ -17,7 +17,7 @@ IntTRB::IntTRB(const IntTRBParams& params)
           (params.packing_factor - 1)),
       range_integrity(params.range_integrity)
 {
-    DPRINTF(IntTRB, "Created tree update queue with properties\n");
+    DPRINTF(IntTRB, "Created integrity tree request buffer with properties\n");
     DPRINTF(IntTRB, "\t\t\t%d queue size\n", params.size);
     DPRINTF(IntTRB,
         "\t\t\t%d tree node bytes (%d height, %d counter bytes, %d non "
@@ -27,7 +27,7 @@ IntTRB::IntTRB(const IntTRBParams& params)
 }
 
 std::pair<bool, IntTreeReq>
-IntTRB::enqueue_request(Addr data_address)
+IntTRB::enqueue_request(Addr data_address, bool is_read)
 {
     // NOTE: the latency of address translation can probably be hidden in
     // case packing_factor is not a power of 2, and if it is, the
@@ -35,8 +35,8 @@ IntTRB::enqueue_request(Addr data_address)
     uint64_t node_id =
         non_leaf_nodes + data_address / bus_bytes / packing_factor;
     uint8_t node_offset = data_address / bus_bytes % packing_factor;
-    IntTreeReq new_request = IntTreeReq(data_address);
-    for (int i = 0; i <= tree_height; i++) {
+    IntTreeReq new_request = IntTreeReq(data_address, is_read);
+    for (int i = 0; i < tree_height; i++) {
         // compute actual node address
         Addr node_address =
             range_integrity.start() + node_id * tree_node_bytes;
@@ -74,7 +74,7 @@ IntTRB::find_request(Addr node_address)
     while (it != queue.end() && !it->contains_request_node(node_address))
         std::advance(it, 1);
     panic_if(it == queue.end(),
-        "could not find element in tree update queue\n");
+        "could not find element in integrity tree request buffer\n");
     return *it;
 }
 
@@ -115,19 +115,34 @@ IntTRB::complete_request_node(Addr node_address)
 {
     for (auto it = queue.begin(); it != queue.end(); it++) {
         if (it->complete(node_address)) {
-            DPRINTF(IntTRB, "finished metadata write 0x%x\n", node_address);
-            if (it->completed_layers >= tree_height + 1) {
-                DPRINTF(IntTRB,
-                    "all metadata writes complete for %s, deleting "
-                    "request from tree update queue\n",
-                    it->to_string());
-                queue.erase(it);
+            DPRINTF(IntTRB, "finished metadata write 0x%x, %s\n",
+                node_address, it->to_string());
+            if (it->completed_layers >= tree_height) {
+                // TODO: perform on-chip root node counter update
                 return true;
             }
             return false;
         }
     }
-    panic("could not find element in tree update queue\n");
+    panic("could not find element in integrity tree request buffer\n");
+}
+
+void
+IntTRB::release_request(Addr node_address)
+{
+    for (auto it = queue.begin(); it != queue.end(); it++) {
+        if (it->contains_request_node(node_address)) {
+            panic_if(it->completed_layers < tree_height,
+                "request was released even though it's not complete!\n");
+            DPRINTF(IntTRB,
+                "all metadata writes complete for %s, deleting "
+                "request from integrity tree request buffer\n",
+                it->to_string());
+            queue.erase(it);
+            return;
+        }
+    }
+    panic("could not find element in integrity tree request buffer\n");
 }
 
 };

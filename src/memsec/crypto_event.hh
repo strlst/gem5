@@ -40,6 +40,40 @@ class CryptoReadEvent : public Event
     };
 };
 
+class DataMACUpdateEvent : public Event
+{
+  private:
+    CryptoCtrl *ctrl;
+    PacketPtr pkt;
+  public:
+    DataMACUpdateEvent(CryptoCtrl *ctrl, PacketPtr pkt)
+        : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt)
+    {
+    }
+    void process() override
+    {
+        // process packet by using callback
+        ctrl->DataMACUpdate(pkt);
+    }
+};
+
+class IntegrityMACUpdateEvent : public Event
+{
+  private:
+    CryptoCtrl *ctrl;
+    PacketPtr pkt;
+  public:
+    IntegrityMACUpdateEvent(CryptoCtrl *ctrl, PacketPtr pkt)
+        : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt)
+    {
+    }
+    void process() override
+    {
+        // process packet by using callback
+        ctrl->IntegrityMACUpdate(pkt);
+    }
+};
+
 }
 
 #endif // __MEMSEC_CRYPTO_EVENT_HH__

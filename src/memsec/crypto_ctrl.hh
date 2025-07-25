@@ -2,7 +2,6 @@
 #define __MEMSEC_CRYPTO_CTRL_HH__
 
 #include <cstdint>
-#include <list>
 #include <queue>
 #include <utility>
 
@@ -11,7 +10,6 @@
 #include "base/statistics.hh"
 #include "base/stats/group.hh"
 #include "base/types.hh"
-#include "debug/CryptoCtrl.hh"
 #include "mem/packet.hh"
 #include "mem/port.hh"
 #include "memsec/tree_update.hh"
@@ -21,16 +19,7 @@
 #define TICK_PER_CYCLE 1000
 #define AFTER_1_CYCLE(t) ((t) + TICK_PER_CYCLE)
 #define AFTER_N_CYCLES(t, n) ((t) + ((n) * TICK_PER_CYCLE))
-
-// parameters sourced from https://ieeexplore.ieee.org/document/7019004
-// AES supports 128 bit blocks
-//#define AES_BLOCK_BYTES (128 / 8)
-// cycle latencies
-//#define AES_ENC_CYCLES 336
-//#define AES_DEC_CYCLES 216
-// initiation intervals
-//#define AES_ENC_II 336
-//#define AES_DEC_II 216
+#define CYCLES_TO_TICKS(n) ((n) * TICK_PER_CYCLE)
 
 namespace gem5
 {
@@ -61,13 +50,19 @@ class CryptoCtrl : public ClockedObject
     System* sys;
     RequestorID requestorId;
 
-    Tick aes_enc_ready, aes_dec_ready;
+    // storing earliest ready times
+    Tick aes_enc_ready, aes_dec_ready, mac_ready;
+
+    // request dimensioning
     uint64_t aes_block_bits, aes_block_bytes;
-    uint64_t aes_enc_cycles, aes_dec_cycles;
-    uint64_t aes_enc_ii, aes_dec_ii;
     uint64_t counter_bits, counter_bytes;
     uint64_t mac_bits, mac_bytes;
+
+    // timing information
+    uint64_t aes_enc_cycles, aes_dec_cycles;
+    uint64_t aes_enc_ii, aes_dec_ii;
     uint64_t mac_cycles, mac_ii;
+
     uint64_t packing_factor;
     uint64_t bytes_per_address;
 
@@ -265,6 +260,11 @@ class CryptoCtrl : public ClockedObject
     // instantiation of the memory-side port
     MemSidePort memPort;
 
+    // available operations
+    void scheduleAESEncryptOp(PacketPtr pkt);
+    void scheduleAESDecryptOp(PacketPtr pkt);
+    void scheduleMACOp(PacketPtr pkt, bool is_data_mac);
+
   public:
     /** constructor
      */
@@ -308,6 +308,24 @@ class CryptoCtrl : public ClockedObject
      * @param pkt requesting packet
      */
     void CryptoRead(PacketPtr pkt);
+
+    /**
+     * In case a data node has been encrypted, perform MAC computation for
+     * integrity of the data value itself (in addition to counter value
+     * integrity provided by the counter tree)
+     *
+     * @param pkt requesting packet
+     */
+    void DataMACUpdate(PacketPtr pkt);
+
+    /**
+     * In case a metadata tree node counter has been updated, perform
+     * final MAC computation (by simulating the delay introduced by the
+     * on-chip MAC engine)
+     *
+     * @param pkt requesting packet
+     */
+    void IntegrityMACUpdate(PacketPtr pkt);
 };
 
 } // namespace gem5

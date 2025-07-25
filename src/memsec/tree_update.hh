@@ -32,33 +32,29 @@ struct IntTreeReqNode
         // we want to return true only when we mark this request complete for
         // the first time
         return !completed && (completed = address == this->address);
-        /*
-        if (!completed) {
-            completed = address == this->address;
-            return true;
-        }
-        return false;
-        */
     }
 };
 
 struct IntTreeReq
 {
+    // address of actual physical memory being protected
     Addr data_address;
-    // complete | node address | node offset
-    std::list<IntTreeReqNode> nodes =
-        std::list<IntTreeReqNode>();
+    // each request can be a write or read request (tree update or tree check)
+    bool is_read;
+    // each integrity tree request encompasses a path of nodes from the leaf
+    // up to the node before the root
+    std::list<IntTreeReqNode> nodes = std::list<IntTreeReqNode>();
     uint8_t completed_layers = 0;
 
-    IntTreeReq(Addr data_address) : data_address(data_address)
+    IntTreeReq(Addr data_address, bool is_read)
+        : data_address(data_address), is_read(is_read)
     {
         panic_if(sizeof(Addr) != sizeof(uint64_t), "unsupported addr size\n");
     }
 
     void add_request_node(Addr node_address, uint8_t node_offset)
     {
-        nodes.emplace_back(
-            IntTreeReqNode(node_address, node_offset));
+        nodes.emplace_back(IntTreeReqNode(node_address, node_offset));
     }
 
     bool complete(Addr node_address)
@@ -126,12 +122,14 @@ class IntTRB : public SimObject
 
     bool is_full() { return queue.size() >= size; }
 
-    std::pair<bool, IntTreeReq> enqueue_request(Addr data_address);
+    std::pair<bool, IntTreeReq>
+    enqueue_request(Addr data_address, bool is_read);
     IntTreeReq& find_request(Addr node_address);
 
     void update_metadata(PacketPtr pkt);
     bool contains_request_node(Addr node_address);
     bool complete_request_node(Addr node_address);
+    void release_request(Addr node_addr);
 };
 
 };
