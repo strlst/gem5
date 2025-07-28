@@ -8,7 +8,6 @@
 
 #include "base/addr_range.hh"
 #include "base/types.hh"
-#include "debug/IntTRB.hh"
 #include "mem/packet.hh"
 #include "params/IntTRB.hh"
 #include "sim/sim_object.hh"
@@ -93,6 +92,7 @@ struct IntTreeReq
         std::ostringstream ss;
         ss << "IntegrityTreeReq(";
         ss << "data_addr=0x" << std::hex << data_address << std::dec;
+        ss << "is_read=" << unsigned(is_read);
         for (auto node : nodes) {
             ss << ", node_addr=0x" << std::hex << node.address << std::dec
                << "@" << unsigned(node.offset) << (node.completed ? "*" : "");
@@ -124,9 +124,12 @@ class IntTRB : public SimObject
 
     std::pair<bool, IntTreeReq>
     enqueue_request(Addr data_address, bool is_read);
-    IntTreeReq& find_request(Addr node_address);
+
+    inline std::list<IntTreeReq>::iterator get_request_it(Addr node_address);
+    IntTreeReq& get_request(Addr node_address);
 
     void update_metadata(PacketPtr pkt);
+    bool contains_request_node(Addr node_address, bool read_flag);
     bool contains_request_node(Addr node_address);
     bool complete_request_node(Addr node_address);
     void release_request(Addr node_addr);

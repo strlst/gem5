@@ -6,7 +6,7 @@ from m5.proxy import *
 
 class IntTRB(SimObject):
     type = "IntTRB"
-    cxx_header = "memsec/tree_update.hh"
+    cxx_header = "memsec/int_tree.hh"
     cxx_class = "gem5::IntTRB"
 
     size = Param.Int(
@@ -64,18 +64,12 @@ class CryptoCtrl(ClockedObject):
     )
     tree_node_bytes = Param.Int(0, "integrity tree node size in bytes")
     tree_height = Param.Int(0, "integrity tree layer count")
-    tree_check_buffer_size = Param.Int(
+    int_tree_buffer_size = Param.Int(
         16,
         (
-            "amount of ongoing integrity tree check (during memory reads)"
-            " requests that can be in-flight at the same time"
-        ),
-    )
-    tree_update_buffer_size = Param.Int(
-        16,
-        (
-            "amount of ongoing integrity tree update (during memory writes)"
-            " requests that can be in-flight at the same time"
+            "amount of ongoing integrity tree requests "
+            "(during memory reads and writes)"
+            " that can be in-flight at the same time"
         ),
     )
 

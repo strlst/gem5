@@ -3,7 +3,7 @@ Import('*')
 SimObject('CryptoCtrl.py', sim_objects=['CryptoCtrl', 'IntTRB'])
 
 Source('crypto_ctrl.cc')
-Source('tree_update.cc')
+Source('int_tree.cc')
 
 DebugFlag('CryptoCtrl', 'Intermediating unit for various crypto operations')
 DebugFlag('IntTRB', 'Unit storing in-flight tree update requests')

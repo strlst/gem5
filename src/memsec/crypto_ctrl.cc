@@ -27,8 +27,8 @@ formattedPacket(PacketPtr pkt)
     ss << ", size=" << unsigned(pkt->getSize());
     ss << ", read=" << unsigned(pkt->isRead());
     ss << ", reqid=" << unsigned(pkt->requestorId());
-    ss << ", flags=0x" << std::hex << unsigned(pkt->req->getFlags())
-       << std::dec;
+    //ss << ", flags=0x" << std::hex << unsigned(pkt->req->getFlags())
+       //<< std::dec;
     ss << ", hasdata=" << unsigned(pkt->hasData());
     ss << ")";
     return ss.str();
@@ -110,10 +110,6 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
         "required)\n",
         range_leaves.to_string(),
         std::log2(range_leaves.end() - range_leaves.start()));
-
-    // also report on subcomponent
-    DPRINTF(CryptoCtrl, "Created tree update queue with size %d\n",
-        params.tree_update_buffer_size);
 
     // sanity check
     assert(range_data.size() + range_integrity.size() <= range_total.size());
@@ -335,10 +331,13 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         stats.writes++;
     }
 
-    // if we are not ready to receive another request
-    if (int_trb->is_full()) {
+    // enqueue integrity tree request in buffer
+    std::pair<bool, IntTreeReq> response =
+        int_trb->enqueue_request(pkt->getAddr(), pkt->isRead());
+    if (!response.first) {
+        int_tree_retry_necessary = true;
         DPRINTF(CryptoCtrl,
-            "busy due to full tree update queue, postponing %s\n",
+            "busy due to full buffer or existing request, postponing %s\n",
             formattedPacket(pkt));
         return false;
     }
@@ -347,6 +346,14 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         // immediately forward packet to mem port
         // (reads don't require processing)
         memPort.sendPacket(pkt);
+
+        // reads for integrity verification
+        for (auto& node : response.second.nodes) {
+            // create and send packets for each layer
+            PacketPtr packet_fetch_md =
+                createPkt(node.address, tree_node_bytes, MemCmd::ReadReq);
+            mdcachePort.sendPacket(packet_fetch_md);
+        }
     } else {
         /*
         // assume multiples of 64 bytes
@@ -361,28 +368,15 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         }
         */
 
-        std::pair<bool, IntTreeReq> response =
-            int_trb->enqueue_request(pkt->getAddr(), false);
-        if (!response.first) {
-            tree_update_retry_necessary = true;
-            DPRINTF(CryptoCtrl,
-                "busy due to existing request, postponing %s\n",
-                formattedPacket(pkt));
-            return false;
-        } else {
-            // decryption
-            scheduleAESEncryptOp(pkt);
+        // decryption
+        scheduleAESEncryptOp(pkt);
 
-            // integrity verification
-            for (auto& node : response.second.nodes) {
-                // create packet
-                PacketPtr packet_fetch_md =
-                    createPkt(node.address, tree_node_bytes, MemCmd::ReadReq);
-                DPRINTF(CryptoCtrl, "created packet read packet %s\n",
-                    formattedPacket(packet_fetch_md));
-                // finally send the packet
-                mdcachePort.sendPacket(packet_fetch_md);
-            }
+        // reads for integrity verification
+        for (auto& node : response.second.nodes) {
+            // create and send packets for each layer
+            PacketPtr packet_fetch_md =
+                createPkt(node.address, tree_node_bytes, MemCmd::ReadReq);
+            mdcachePort.sendPacket(packet_fetch_md);
         }
     }
 
@@ -394,7 +388,7 @@ CryptoCtrl::CryptoWrite(PacketPtr pkt)
 {
     // for now ignore return value
     memPort.sendPacket(pkt);
-    scheduleMACOp(pkt, true);
+    scheduleMACOp(pkt, MACEventType::DataMACUpdate);
 }
 
 bool
@@ -407,10 +401,7 @@ CryptoCtrl::handleResponse(PacketPtr pkt, ResponseSource source)
     case ResponseSource::MemoryController:
         if (pkt->isRead()) {
             scheduleAESDecryptOp(pkt);
-            // TODO: evaluate
-            scheduleMACOp(pkt, true);
-
-            // TODO: implement CIRead (non-blocking) here
+            scheduleMACOp(pkt, MACEventType::DataMACCheck);
         } else {
             // directly forward the data
             cpuPort.sendPacket(pkt);
@@ -418,20 +409,29 @@ CryptoCtrl::handleResponse(PacketPtr pkt, ResponseSource source)
         break;
     case ResponseSource::MetadataCache:
         if (pkt->isRead()) {
-            // the cache has yielded the data, now we update the counters
-            // and hash
-            PacketPtr new_pkt = createPktFromPkt(pkt, MemCmd::WriteReq);
-            DPRINTF(CryptoCtrl,
-                "created write-after-read request packet %s\n",
-                formattedPacket(new_pkt));
-            int_trb->update_metadata(new_pkt);
-            mdcachePort.sendPacket(new_pkt);
+            // depending on whether we are just checking the integrity tree,
+            // or reading to update the integrity tree metadata, we have to
+            // react differently
+            if (int_trb->contains_request_node(pkt->getAddr(), true)) {
+                // the node we are handling is contained in a read request
+                scheduleMACOp(pkt, MACEventType::IntegrityMACCheck);
+            } else {
+                // the node we are handling is contained in a write request
+                // the cache has yielded the data, now we update the counters
+                // and hash
+                PacketPtr new_pkt = createPktFromPkt(pkt, MemCmd::WriteReq);
+                DPRINTF(CryptoCtrl,
+                    "created write-after-read request packet %s\n",
+                    formattedPacket(new_pkt));
+                int_trb->update_metadata(new_pkt);
+                mdcachePort.sendPacket(new_pkt);
+            }
         } else {
             // forward completion event to queue
             bool completed = int_trb->complete_request_node(pkt->getAddr());
             DPRINTF(CryptoCtrl, "\n");
             if (completed) {
-                scheduleMACOp(pkt, false);
+                scheduleMACOp(pkt, MACEventType::IntegrityMACUpdate);
             }
         }
         break;
@@ -445,6 +445,15 @@ CryptoCtrl::CryptoRead(PacketPtr pkt)
 {
     // for now ignore return value
     cpuPort.sendPacket(pkt);
+    // also check the data MAC itself for integrity
+    scheduleMACOp(pkt, MACEventType::DataMACCheck);
+}
+
+void
+CryptoCtrl::DataMACCheck(PacketPtr pkt)
+{
+    DPRINTF(CryptoCtrl, "finished data MAC check %s\n", formattedPacket(pkt));
+    // theoretically we would check the MAC here
 }
 
 void
@@ -455,14 +464,31 @@ CryptoCtrl::DataMACUpdate(PacketPtr pkt)
 }
 
 void
+CryptoCtrl::IntegrityMACCheck(PacketPtr pkt)
+{
+    DPRINTF(CryptoCtrl, "finished integrity MAC check %s\n",
+        formattedPacket(pkt));
+    bool completed = int_trb->complete_request_node(pkt->getAddr());
+    if (completed) {
+        int_trb->release_request(pkt->getAddr());
+        if (int_tree_retry_necessary) {
+            int_tree_retry_necessary = false;
+            // try to retry failed requests at this point
+            DPRINTF(CryptoCtrl, "retry from tree update queue\n");
+            cpuPort.sendRetryReq();
+        }
+    }
+}
+
+void
 CryptoCtrl::IntegrityMACUpdate(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "finished integrity MAC update %s\n",
         formattedPacket(pkt));
     // theoretically we would update the MAC here
     int_trb->release_request(pkt->getAddr());
-    if (tree_update_retry_necessary) {
-        tree_update_retry_necessary = false;
+    if (int_tree_retry_necessary) {
+        int_tree_retry_necessary = false;
         // try to retry failed requests at this point
         DPRINTF(CryptoCtrl, "retry from tree update queue\n");
         cpuPort.sendRetryReq();
@@ -543,18 +569,14 @@ CryptoCtrl::scheduleAESDecryptOp(PacketPtr pkt)
 }
 
 void
-CryptoCtrl::scheduleMACOp(PacketPtr pkt, bool is_data_mac)
+CryptoCtrl::scheduleMACOp(PacketPtr pkt, MACEventType type)
 {
     Tick start = curTick() > mac_ready ? curTick() : mac_ready;
     Tick end = start + CYCLES_TO_TICKS(mac_cycles);
     // consider how long the current operations blocks other
     // incoming requests
     mac_ready = start + CYCLES_TO_TICKS(mac_ii);
-    if (is_data_mac) {
-        schedule(new DataMACUpdateEvent(this, pkt), end);
-    } else {
-        schedule(new IntegrityMACUpdateEvent(this, pkt), end);
-    }
+    schedule(new MACEvent(this, pkt, type), end);
 }
 
 } // namespace gem5

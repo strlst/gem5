@@ -40,37 +40,35 @@ class CryptoReadEvent : public Event
     };
 };
 
-class DataMACUpdateEvent : public Event
+class MACEvent : public Event
 {
   private:
     CryptoCtrl *ctrl;
     PacketPtr pkt;
+    MACEventType type;
   public:
-    DataMACUpdateEvent(CryptoCtrl *ctrl, PacketPtr pkt)
-        : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt)
+    MACEvent(CryptoCtrl *ctrl, PacketPtr pkt, MACEventType type)
+        : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt), type(type)
     {
     }
-    void process() override
-    {
-        // process packet by using callback
-        ctrl->DataMACUpdate(pkt);
-    }
-};
 
-class IntegrityMACUpdateEvent : public Event
-{
-  private:
-    CryptoCtrl *ctrl;
-    PacketPtr pkt;
-  public:
-    IntegrityMACUpdateEvent(CryptoCtrl *ctrl, PacketPtr pkt)
-        : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt)
-    {
-    }
     void process() override
     {
         // process packet by using callback
-        ctrl->IntegrityMACUpdate(pkt);
+        switch (type) {
+            case DataMACCheck:
+                ctrl->DataMACCheck(pkt);
+                break;
+            case DataMACUpdate:
+                ctrl->DataMACUpdate(pkt);
+                break;
+            case IntegrityMACCheck:
+                ctrl->IntegrityMACCheck(pkt);
+                break;
+            case IntegrityMACUpdate:
+                ctrl->IntegrityMACUpdate(pkt);
+                break;
+        }
     }
 };
 

@@ -2,7 +2,7 @@
 
 #include "base/trace.hh"
 #include "debug/IntTRB.hh"
-#include "tree_update.hh"
+#include "int_tree.hh"
 
 namespace gem5
 {
@@ -29,13 +29,18 @@ IntTRB::IntTRB(const IntTRBParams& params)
 std::pair<bool, IntTreeReq>
 IntTRB::enqueue_request(Addr data_address, bool is_read)
 {
+    // create request
+    IntTreeReq new_request = IntTreeReq(data_address, is_read);
+    if (is_full()) {
+        return std::make_pair(false, new_request);
+    }
+
     // NOTE: the latency of address translation can probably be hidden in
     // case packing_factor is not a power of 2, and if it is, the
     // necessary operations can be performed with bit operations
     uint64_t node_id =
         non_leaf_nodes + data_address / bus_bytes / packing_factor;
     uint8_t node_offset = data_address / bus_bytes % packing_factor;
-    IntTreeReq new_request = IntTreeReq(data_address, is_read);
     for (int i = 0; i < tree_height; i++) {
         // compute actual node address
         Addr node_address =
@@ -67,22 +72,28 @@ IntTRB::enqueue_request(Addr data_address, bool is_read)
     return std::make_pair(true, new_request);
 }
 
-IntTreeReq&
-IntTRB::find_request(Addr node_address)
+inline std::list<IntTreeReq>::iterator
+IntTRB::get_request_it(Addr node_address)
 {
     auto it = queue.begin();
     while (it != queue.end() && !it->contains_request_node(node_address))
         std::advance(it, 1);
     panic_if(it == queue.end(),
         "could not find element in integrity tree request buffer\n");
-    return *it;
+    return it;
+}
+
+IntTreeReq&
+IntTRB::get_request(Addr node_address)
+{
+    return *get_request_it(node_address);
 }
 
 void
 IntTRB::update_metadata(PacketPtr pkt)
 {
     auto node_address = pkt->getAddr();
-    auto request = find_request(node_address);
+    auto request = get_request(node_address);
     uint8_t offset = request.get_offset(node_address);
     DPRINTF(IntTRB, "updating 0x%x request %s offset 0x%x\n", node_address,
         request.to_string(), offset);
@@ -101,6 +112,17 @@ IntTRB::update_metadata(PacketPtr pkt)
 }
 
 bool
+IntTRB::contains_request_node(Addr node_address, bool read_flag)
+{
+    for (auto& request : queue) {
+        if (request.contains_request_node(node_address) &&
+            request.is_read == read_flag)
+            return true;
+    }
+    return false;
+};
+
+bool
 IntTRB::contains_request_node(Addr node_address)
 {
     for (auto& request : queue) {
@@ -115,7 +137,8 @@ IntTRB::complete_request_node(Addr node_address)
 {
     for (auto it = queue.begin(); it != queue.end(); it++) {
         if (it->complete(node_address)) {
-            DPRINTF(IntTRB, "finished metadata write 0x%x, %s\n",
+            DPRINTF(IntTRB, "finished metadata %s 0x%x, %s\n",
+                it->is_read ? "read" : "write",
                 node_address, it->to_string());
             if (it->completed_layers >= tree_height) {
                 // TODO: perform on-chip root node counter update

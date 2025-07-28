@@ -12,7 +12,7 @@
 #include "base/types.hh"
 #include "mem/packet.hh"
 #include "mem/port.hh"
-#include "memsec/tree_update.hh"
+#include "memsec/int_tree.hh"
 #include "params/CryptoCtrl.hh"
 #include "sim/clocked_object.hh"
 
@@ -30,6 +30,14 @@ enum ResponseSource
 {
     MemoryController,
     MetadataCache
+};
+
+enum MACEventType
+{
+    DataMACCheck,
+    DataMACUpdate,
+    IntegrityMACCheck,
+    IntegrityMACUpdate,
 };
 
 struct TreeCheckRequest
@@ -77,7 +85,7 @@ class CryptoCtrl : public ClockedObject
     AddrRange range_leaves;
 
     IntTRB* int_trb;
-    bool tree_update_retry_necessary = false;
+    bool int_tree_retry_necessary = false;
 
     struct PktStats : public Group
     {
@@ -263,7 +271,7 @@ class CryptoCtrl : public ClockedObject
     // available operations
     void scheduleAESEncryptOp(PacketPtr pkt);
     void scheduleAESDecryptOp(PacketPtr pkt);
-    void scheduleMACOp(PacketPtr pkt, bool is_data_mac);
+    void scheduleMACOp(PacketPtr pkt, MACEventType type);
 
   public:
     /** constructor
@@ -310,6 +318,14 @@ class CryptoCtrl : public ClockedObject
     void CryptoRead(PacketPtr pkt);
 
     /**
+     * In case a data node has been decrypted, perform MAC computation to
+     * check integrity of the data itself
+     *
+     * @param pkt requesting packet
+     */
+    void DataMACCheck(PacketPtr pkt);
+
+    /**
      * In case a data node has been encrypted, perform MAC computation for
      * integrity of the data value itself (in addition to counter value
      * integrity provided by the counter tree)
@@ -317,6 +333,13 @@ class CryptoCtrl : public ClockedObject
      * @param pkt requesting packet
      */
     void DataMACUpdate(PacketPtr pkt);
+
+    /**
+     * Callback in case a metadata tree node has been checked for integrity
+     *
+     * @param pkt requesting packet
+     */
+    void IntegrityMACCheck(PacketPtr pkt);
 
     /**
      * In case a metadata tree node counter has been updated, perform
