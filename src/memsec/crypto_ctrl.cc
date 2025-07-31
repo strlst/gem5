@@ -468,6 +468,8 @@ CryptoCtrl::IntegrityMACCheck(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "finished integrity MAC check %s\n",
         formattedPacket(pkt));
+    // TODO: consider adding extra logic to gate completion of events to
+    // times where their parent event reads have already finished
     bool completed = int_trb->complete_request_node(pkt->getAddr());
     if (completed) {
         int_trb->release_request(pkt->getAddr());

@@ -16,7 +16,6 @@ def parse_args():
     parser.add_argument(
         "binary",
         default="tests/test-progs/matmul/bin/riscv/linux/matmul",
-        nargs="?",
         help="path to the binary to use as a bare-metal test",
     )
     parser.add_argument(
@@ -129,6 +128,7 @@ def parse_args():
         type=int,
         help="Number of permissible in-flight requests (default: 32)",
     )
+    parser.add_argument("rest", nargs=argparse.REMAINDER)
 
     return parser.parse_args()
 
@@ -163,6 +163,9 @@ def create_system(args):
 
 
 def set_threaded_workload(system, args):
+    # set system workload itself
+    system.workload = SEWorkload.init_compatible(args.binary)
+
     process = Process()
     process.cmd = [args.binary]
 
@@ -170,9 +173,6 @@ def set_threaded_workload(system, args):
     for cpu in system.cpu:
         cpu.workload = process
         cpu.createThreads()
-
-    # set system workload itself
-    system.workload = SEWorkload.init_compatible(args.binary)
 
 
 def main():
