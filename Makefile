@@ -1,8 +1,8 @@
 # gem5 flags
 GEM5:=build/RISCV/gem5.opt
 GEM5_PIPEVIEW:=--debug-flags=O3PipeView --debug-start=0 --debug-file=trace.out
-GEM5_CONFIG:=configs/tlcpu/full.py --num-cores=1 --ooo --no-memsec
-GEM5_CONFIG_BARE:=configs/tlcpu/simple/simple.py --num-cores=1 --ooo --no-memsec
+GEM5_CONFIG:=configs/tlcpu/simple/simple.py --num-cores=1 --ooo --no-memsec
+GEM5_CONFIG_FULL:=configs/tlcpu/full.py --num-cores=1 --ooo --no-memsec
 GEM5_CONFIG_CACHE:=--l1i-size=1KiB --l1d-size=1KiB --l2-size=2KiB --no-l3
 GEM5_CONFIG_AES:=--crypto-aes-block-bits=128 --crypto-aes-enc-cycles=80 --crypto-aes-dec-cycles=80 --crypto-aes-enc-ii=20 --crypto-aes-dec-ii=20
 GEM5_CONFIG_MAC:=--crypto-mac-cycles=40 --crypto-mac-ii=10
@@ -22,21 +22,21 @@ REMOTE_HOSTNAME:=tlml003
 REMOTE_DIR:=~/gem5
 
 run:
-	$(GEM5) $(GEM5_CONFIG) $(GEM5_CONFIG_CACHE) $(GEM5_CONFIG_AES) $(GEM5_CONFIG_MAC) $(GEM5_CONFIG_CRYPTO)
+	$(GEM5) $(GEM5_CONFIG) $(GEM5_CONFIG_CACHE) $(GEM5_CONFIG_AES) $(GEM5_CONFIG_MAC) $(GEM5_CONFIG_CRYPTO) $(BINARY)
 
-bare:
-	$(GEM5) $(GEM5_CONFIG_BARE) $(GEM5_CONFIG_CACHE) $(GEM5_CONFIG_AES) $(GEM5_CONFIG_MAC) $(GEM5_CONFIG_CRYPTO) $(BINARY)
+linux:
+	$(GEM5) $(GEM5_CONFIG_FULL) $(GEM5_CONFIG_CACHE) $(GEM5_CONFIG_AES) $(GEM5_CONFIG_MAC) $(GEM5_CONFIG_CRYPTO)
 
 debug:
-	$(GEM5) $(DEBUG_FLAGS) $(GEM5_CONFIG) $(GEM5_CONFIG_CACHE) $(GEM5_CONFIG_AES) $(GEM5_CONFIG_MAC) $(GEM5_CONFIG_CRYPTO)
-	# $(GEM5) $(DEBUG_FLAGS) $(GEM5_CONFIG) $(GEM5_CONFIG_CACHE) $(GEM5_CONFIG_AES) $(GEM5_CONFIG_MAC) $(GEM5_CONFIG_CRYPTO)
+	$(GEM5) $(DEBUG_FLAGS) $(GEM5_CONFIG) $(GEM5_CONFIG_CACHE) $(GEM5_CONFIG_AES) $(GEM5_CONFIG_MAC) $(GEM5_CONFIG_CRYPTO) $(BINARY)
+	# $(GEM5) $(DEBUG_FLAGS) $(GEM5_CONFIG) $(GEM5_CONFIG_CACHE) $(GEM5_CONFIG_AES) $(GEM5_CONFIG_MAC) $(GEM5_CONFIG_CRYPTO) $(BINARY)
 
 pipeview:
-	$(GEM5) $(GEM5_PIPEVIEW) $(DEBUG_FLAGS) $(GEM5_CONFIG) $(GEM5_CONFIG_CACHE) $(GEM5_CONFIG_AES) $(GEM5_CONFIG_MAC) $(GEM5_CONFIG_CRYPTO)
+	$(GEM5) $(GEM5_PIPEVIEW) $(DEBUG_FLAGS) $(GEM5_CONFIG) $(GEM5_CONFIG_CACHE) $(GEM5_CONFIG_AES) $(GEM5_CONFIG_MAC) $(GEM5_CONFIG_CRYPTO) $(BINARY)
 	$(PIPEVIEW) $(PIPEVIEW_CONFIG)
 
 gdb:
-	# $(GEM5_CONFIG)
+	# $(GEM5) $(DEBUG_FLAGS) $(GEM5_CONFIG) $(GEM5_CONFIG_CACHE) $(GEM5_CONFIG_AES) $(GEM5_CONFIG_MAC) $(GEM5_CONFIG_CRYPTO) $(BINARY)
 	gdb $(GEM5)
 
 build:
@@ -58,4 +58,4 @@ remote-build:
 clean:
 	rm -rf m5out build
 
-.PHONY: run bare build debug build build-dev remote-run remote-debug remote-build test-stream clean
+.PHONY: run linux build debug build build-dev remote-run remote-debug remote-build test-stream clean

@@ -207,6 +207,7 @@ PySource('gem5.components.devices.gpus',
 PySource('gem5.components.memory', 'gem5/components/memory/__init__.py')
 PySource('gem5.components.memory', 'gem5/components/memory/abstract_memory_system.py')
 PySource('gem5.components.memory', 'gem5/components/memory/dramsim_3.py')
+PySource('gem5.components.memory', 'gem5/components/memory/secure_memory.py')
 
 if env['HAVE_DRAMSYS']:
     PySource('gem5.components.memory', 'gem5/components/memory/dramsys.py')

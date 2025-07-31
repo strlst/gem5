@@ -8,6 +8,7 @@ from gem5.components.cachehierarchies.classic.private_l1_private_l2_walk_cache_h
     PrivateL1PrivateL2WalkCacheHierarchy,
 )
 from gem5.components.memory.dramsim_3 import SingleChannel
+from gem5.components.memory.secure_memory import SecureMemory
 from gem5.components.processors.cpu_types import CPUTypes
 from gem5.components.processors.simple_processor import SimpleProcessor
 from gem5.isas import ISA
@@ -168,7 +169,10 @@ if __name__ == "__m5_main__":
     cache_hierarchy = PrivateL1PrivateL2WalkCacheHierarchy(
         l1d_size="32KiB", l1i_size="32KiB", l2_size="512KiB"
     )
-    memory = SingleChannel("DDR4_8Gb_x8_3200", size="8GiB")
+    # memory = SingleChannel("DDR4_8Gb_x8_3200", size="8GiB")
+    memory = SecureMemory(
+        args, dram_mem_type="DDR4_8Gb_x8_3200", dram_size="8GiB"
+    )
     processor = SimpleProcessor(
         cpu_type=CPUTypes.O3, isa=ISA.RISCV, num_cores=1
     )

@@ -167,7 +167,7 @@ def set_threaded_workload(system, args):
     system.workload = SEWorkload.init_compatible(args.binary)
 
     process = Process()
-    process.cmd = [args.binary]
+    process.cmd = [args.binary] + args.rest
 
     # set workload for each cpu
     for cpu in system.cpu:
