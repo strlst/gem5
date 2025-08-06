@@ -280,6 +280,7 @@ def _redirect_paths(options):
     redirects = getattr(options, "redirects", [])
     for redirect in redirects:
         app_path, host_path = redirect.split("=")
+        print("redirect:", app_path, host_path)
         redirect_paths.append(
             RedirectPath(app_path=app_path, host_paths=[host_path])
         )

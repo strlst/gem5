@@ -1,23 +1,33 @@
 import argparse
+import sys
 
 from caches import *
 from memory import *
 
 import m5
 from m5.objects import *
+from m5.util import (
+    addToPath,
+    fatal,
+    warn,
+)
 
-from gem5.resources.resource import obtain_resource
+addToPath("../../")
+
+from common import (
+    ObjectList,
+    Options,
+    Simulation,
+)
+from common.FileSystemConfig import config_filesystem
 
 
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="A simple system for secure memory experiments."
-    )
-    parser.add_argument(
-        "binary",
-        default="tests/test-progs/matmul/bin/riscv/linux/matmul",
-        help="path to the binary to use as a bare-metal test",
-    )
+def add_custom_args(parser):
+    # parser.add_argument(
+    # "binary",
+    # default="tests/test-progs/matmul/bin/riscv/linux/matmul",
+    # help="path to the binary to use as a bare-metal test",
+    # )
     parser.add_argument(
         "--num-cores",
         default=1,
@@ -130,8 +140,6 @@ def parse_args():
     )
     parser.add_argument("rest", nargs=argparse.REMAINDER)
 
-    return parser.parse_args()
-
 
 def create_system(args):
     system = System()
@@ -162,22 +170,90 @@ def create_system(args):
     return system
 
 
-def set_threaded_workload(system, args):
-    # set system workload itself
-    system.workload = SEWorkload.init_compatible(args.binary)
+def get_processes(args):
+    """Interprets provided args and returns a list of processes"""
 
-    process = Process()
-    process.cmd = [args.binary] + args.rest
+    multiprocesses = []
+    inputs = []
+    outputs = []
+    errouts = []
+    pargs = []
+
+    workloads = args.cmd.split(";")
+    if args.input != "":
+        inputs = args.input.split(";")
+    if args.output != "":
+        outputs = args.output.split(";")
+    if args.errout != "":
+        errouts = args.errout.split(";")
+    if args.options != "":
+        pargs = args.options.split(";")
+
+    print(inputs, outputs, errouts, pargs)
+
+    idx = 0
+    for wrkld in workloads:
+        process = Process(pid=100 + idx)
+        process.executable = wrkld
+        process.cwd = os.getcwd()
+        process.gid = os.getgid()
+
+        if args.env:
+            with open(args.env) as f:
+                process.env = [line.rstrip() for line in f]
+
+        if len(pargs) > idx:
+            process.cmd = [wrkld] + pargs[idx].split()
+        else:
+            process.cmd = [wrkld]
+
+        if len(inputs) > idx:
+            process.input = inputs[idx]
+        if len(outputs) > idx:
+            process.output = outputs[idx]
+        if len(errouts) > idx:
+            process.errout = errouts[idx]
+
+        multiprocesses.append(process)
+        idx += 1
+
+    print(multiprocesses, idx)
+
+    return multiprocesses, idx
+
+
+def set_threaded_workload(system, args):
+    if args.cmd:
+        multiprocesses, numThreads = get_processes(args)
+    else:
+        print("No workload specified. Exiting!\n", file=sys.stderr)
+        sys.exit(1)
+
+    # set system workload itself
+    mp0_path = multiprocesses[0].executable
+    system.workload = SEWorkload.init_compatible(mp0_path)
 
     # set workload for each cpu
-    for cpu in system.cpu:
+    if len(system.cpu) != len(multiprocesses):
+        print(
+            "Workloads must match number of processors. Exiting!\n",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    for cpu, process in zip(system.cpu, multiprocesses):
         cpu.workload = process
         cpu.createThreads()
 
 
 def main():
-    args = parse_args()
+    parser = argparse.ArgumentParser(
+        description="A simple system for secure memory experiments."
+    )
+    add_custom_args(parser)
+    Options.addSEOptions(parser)
+    args = parser.parse_args()
     system = create_system(args)
+    config_filesystem(system, args)
     set_threaded_workload(system, args)
 
     # create root of gem5 hierarchy

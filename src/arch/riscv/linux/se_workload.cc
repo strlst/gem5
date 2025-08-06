@@ -526,6 +526,12 @@ riscvHWProbeFunc(SyscallDesc *desc, ThreadContext *tc, VPtr<> pairs,
                                   cpus_user, flags);
 }
 
+static SyscallReturn
+rseqFunc(SyscallDesc *desc, ThreadContext *tc)
+{
+    return 0;
+}
+
 SyscallDescTable<SEWorkload::SyscallABI64> EmuLinux::syscallDescs64 = {
     { 0,    "io_setup" },
     { 1,    "io_destroy" },
@@ -803,6 +809,7 @@ SyscallDescTable<SEWorkload::SyscallABI64> EmuLinux::syscallDescs64 = {
     { 285,  "copy_file_range" },
     { 286,  "preadv2" },
     { 287,  "pwritev2" },
+    { 293,  "rseq", rseqFunc },
     { 424,  "pidfd_send_signal" },
     { 425,  "io_uring_setup" },
     { 426,  "io_uring_enter" },
