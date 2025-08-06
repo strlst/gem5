@@ -1,0 +1,121 @@
+{
+    "specdir": "/opt/spec/cpu2017/benchspec/CPU",
+    "benchmarks": {
+        "503.bwaves_r": {
+            "command": "503.bwaves_r/exe/bwaves_r_base.mytest-m64",
+            "runs": [
+                "bwaves_1 < benchmark/bwaves_1.in > benchmark/bwaves_1.out 2>> benchmark/bwaves_1.err",
+                "bwaves_2 < benchmark/bwaves_2.in > benchmark/bwaves_2.out 2>> benchmark/bwaves_2.err",
+                "bwaves_3 < benchmark/bwaves_3.in > benchmark/bwaves_3.out 2>> benchmark/bwaves_3.err",
+                "bwaves_4 < benchmark/bwaves_4.in > benchmark/bwaves_4.out 2>> benchmark/bwaves_4.err"
+            ]
+        },
+        "507.cactuBSSN_r": {
+            "command": "507.cactuBSSN_r/exe/cactusBSSN_r_base.mytest-m64",
+            "runs": [
+                "benchmark/507.cactuBSSN_r/spec_ref.par > benchmark/507.cactuBSSN_r/spec_ref.out 2>> benchmark/507.cactuBSSN_r/spec_ref.err"
+            ]
+        },
+        "508.namd_r": {
+            "command": "508.namd_r/exe/namd_r_base.mytest-m64",
+            "runs": [
+                "--input benchmark/508.namd_r/apoa1.input --output benchmark/508.namd_r/apoa1.ref.output --iterations 65 > benchmark/508.namd_r/namd.out 2>> benchmark/508.namd_r/namd.err"
+            ]
+        },
+        "511.povray_r": {
+            "command": "511.povray_r/exe/povray_r_base.mytest-m64",
+            "runs": [
+                "benchmark/511.povray_r/SPEC-benchmark-ref.ini > benchmark/511.povray_r/SPEC-benchmark-ref.stdout 2>> benchmark/511.povray_r/SPEC-benchmark-ref.stderr"
+            ]
+        },
+        "519.lbm_r": {
+            "command": "519.lbm_r/exe/lbm_r_base.mytest-m64",
+            "runs": [
+                "3000 benchmark/519.lbm_r/reference.dat 0 0 benchmark/519.lbm_r/100_100_130_ldc.of > benchmark/519.lbm_r/lbm.out 2>> benchmark/519.lbm_r/lbm.err"
+            ]
+        },
+        "538.imagick_r": {
+            "command": "538.imagick_r/exe/imagick_r_base.mytest-m64",
+            "runs": [
+                "-limit disk 0 benchmark/538.imagick_r/refrate_input.tga -edge 41 -resample 181% -emboss 31 -colorspace YUV -mean-shift 19x19+15% -resize 30% benchmark/538.imagick_r/refrate_output.tga > benchmark/538.imagick_r/refrate_convert.out 2>> benchmark/538.imagick_r/refrate_convert.err"
+            ]
+        },
+        "544.nab_r": {
+            "command": "544.nab_r/exe/nab_r_base.mytest-m64",
+            "runs": [
+                "1122214447 122 > benchmark/544.nab_r/1am0.out 2>> benchmark/544.nab_r/1am0.err"
+            ]
+        },
+        "549.fotonik3d_r": {
+            "command": "549.fotonik3d_r/exe/fotonik3d_r_base.mytest-m64",
+            "runs": [
+                "> benchmark/549.fotonik3d_r/fotonik3d_r.log 2>> benchmark/549.fotonik3d_r/fotonik3d_r.err"
+            ]
+        },
+        "554.roms_r": {
+            "command": "554.roms_r/exe/roms_r_base.mytest-m64",
+            "runs": [
+                "< benchmark/554.roms_r/ocean_benchmark2.in.x > benchmark/554.roms_r/ocean_benchmark2.log 2>> benchmark/554.roms_r/ocean_benchmark2.err"
+            ]
+        },
+        "997.specrand_fr": {
+            "command": "997.specrand_fr/exe/specrand_fr_base.mytest-m64",
+            "runs": [
+                "1255432124 234923 > benchmark/997.specrand_fr/rand.234923.out 2>> benchmark/997.specrand_fr/rand.234923.err"
+            ]
+        },
+        "502.gcc_r": {
+            "command": "502.gcc_r/exe/cpugcc_r_base.mytest-m64",
+            "runs": [
+                "benchmark/502.gcc_r/gcc-pp.c -O3 -finline-limit=0 -fif-conversion -fif-conversion2 -o benchmark/502.gcc_r/gcc-pp.opts-O3_-finline-limit_0_-fif-conversion_-fif-conversion2.s > benchmark/502.gcc_r/gcc-pp.opts-O3_-finline-limit_0_-fif-conversion_-fif-conversion2.out 2>> benchmark/502.gcc_r/gcc-pp.opts-O3_-finline-limit_0_-fif-conversion_-fif-conversion2.err",
+                "benchmark/502.gcc_r/gcc-pp.c -O2 -finline-limit=36000 -fpic -o benchmark/502.gcc_r/gcc-pp.opts-O2_-finline-limit_36000_-fpic.s > benchmark/502.gcc_r/gcc-pp.opts-O2_-finline-limit_36000_-fpic.out 2>> benchmark/502.gcc_r/gcc-pp.opts-O2_-finline-limit_36000_-fpic.err",
+                "benchmark/502.gcc_r/gcc-smaller.c -O3 -fipa-pta -o benchmark/502.gcc_r/gcc-smaller.opts-O3_-fipa-pta.s > benchmark/502.gcc_r/gcc-smaller.opts-O3_-fipa-pta.out 2>> benchmark/502.gcc_r/gcc-smaller.opts-O3_-fipa-pta.err",
+                "benchmark/502.gcc_r/ref32.c -O5 -o benchmark/502.gcc_r/ref32.opts-O5.s > benchmark/502.gcc_r/ref32.opts-O5.out 2>> benchmark/502.gcc_r/ref32.opts-O5.err"
+            ]
+        },
+        "505.mcf_r": {
+            "command": "505.mcf_r/exe/mcf_r_base.mytest-m64",
+            "runs": [
+                "benchmark/505.mcf_r/inp.in > benchmark/505.mcf_r/inp.out 2>> benchmark/505.mcf_r/inp.err"
+            ]
+        },
+        "520.omnetpp_r": {
+            "command": "520.omnetpp_r/exe/omnetpp_r_base.mytest-m64",
+            "runs": [
+                "-c General -r 0 > benchmark/520.omnetpp_r/omnetpp.General-0.out 2>> benchmark/520.omnetpp_r/omnetpp.General-0.err"
+            ]
+        },
+        "531.deepsjeng_r": {
+            "command": "531.deepsjeng_r/exe/deepsjeng_r_base.mytest-m64",
+            "runs": [
+                "benchmark/531.deepsjeng_r/ref.txt > benchmark/531.deepsjeng_r/ref.out 2>> benchmark/531.deepsjeng_r/ref.err"
+            ]
+        },
+        "541.leela_r": {
+            "command": "541.leela_r/exe/leela_r_base.mytest-m64",
+            "runs": [
+                "benchmark/541.leela_r/ref.sgf > benchmark/541.leela_r/ref.out 2>> benchmark/541.leela_r/ref.err"
+            ]
+        },
+        "548.exchange2_r": {
+            "command": "548.exchange2_r/exe/exchange2_r_base.mytest-m64",
+            "runs": [
+                "6 > benchmark/548.exchange2_r/exchange2.txt 2>> benchmark/548.exchange2_r/exchange2.err"
+            ]
+        },
+        "557.xz_r": {
+            "command": "557.xz_r/exe/xz_r_base.mytest-m64",
+            "runs": [
+                "benchmark/557.xz_r/cld.tar.xz 160 19cf30ae51eddcbefda78dd06014b4b96281456e078ca7c13e1c0c9e6aaea8dff3efb4ad6b0456697718cede6bd5454852652806a657bb56e07d61128434b474 59796407 61004416 6 > benchmark/557.xz_r/cld.tar-160-6.out 2>> benchmark/557.xz_r/cld.tar-160-6.err",
+                "benchmark/557.xz_r/cpu2006docs.tar.xz 250 055ce243071129412e9dd0b3b69a21654033a9b723d874b2015c774fac1553d9713be561ca86f74e4f16f22e664fc17a79f30caa5ad2c04fbc447549c2810fae 23047774 23513385 6e > benchmark/557.xz_r/cpu2006docs.tar-250-6e.out 2>> benchmark/557.xz_r/cpu2006docs.tar-250-6e.err",
+                "benchmark/557.xz_r/input.combined.xz 250 a841f68f38572a49d86226b7ff5baeb31bd19dc637a922a972b2e6d1257a890f6a544ecab967c313e370478c74f760eb229d4eef8a8d2836d233d3e9dd1430bf 40401484 41217675 7 > benchmark/557.xz_r/input.combined-250-7.out 2>> benchmark/557.xz_r/input.combined-250-7.err"
+            ]
+        },
+        "999.specrand_ir": {
+            "command": "999.specrand_ir/exe/specrand_ir_base.mytest-m64",
+            "runs": [
+                "1255432124 234923 > benchmark/999.specrand_ir/rand.234923.out 2>> benchmark/999.specrand_ir/rand.234923.err"
+            ]
+        }
+    }
+}
