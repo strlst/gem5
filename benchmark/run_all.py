@@ -13,17 +13,13 @@ def main(args):
     with open(spec_commands) as spec_commands_file:
         commands = json.loads(spec_commands_file.read())
 
-    if not args.dry:
-        for bench in commands["benchmarks"]:
-            os.makedirs(os.path.join("result", bench), exist_ok=True)
-
     cmds = []
     for bench in commands["benchmarks"]:
         cmd = os.path.join(
             commands["specdir"], commands["benchmarks"][bench]["command"]
         )
         runs = commands["benchmarks"][bench]["runs"]
-        for run in runs:
+        for run_id, run in enumerate(runs):
             if args.dry:
                 print(f"{cmd} {run}")
                 continue
@@ -52,13 +48,18 @@ def main(args):
                         print(f"copying from {joined} to {bench}")
                         shutil.copy(joined, os.path.join("benchmark", bench))
                         break
-            cmds.append((cmd, run))
+            cmds.append((cmd, run, bench, run_id))
 
     if args.dry:
         return
 
-    for cmd, options in cmds:
-        print(f'make spec SPECCMD={cmd} SPECOPTIONS="{options}"')
+    # for now just print make commands instead of actually calling make
+    for cmd, options, bench, run_id in cmds:
+        outdir = os.path.join("result", f"{bench}_{run_id}")
+        os.makedirs(outdir, exist_ok=True)
+        print(
+            f'make spec SPECOUTDIR={outdir} SPECCMD={cmd} SPECOPTIONS="{options}"'
+        )
 
 
 if __name__ == "__main__":
