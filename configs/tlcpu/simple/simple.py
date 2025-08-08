@@ -161,11 +161,7 @@ def create_system(args):
     for core in system.cpu:
         core.createInterruptController()
 
-    cache_system = CacheSystem()
-    cache_system.initialize(system, args)
-
-    memory_system = MemorySystem()
-    memory_system.initialize(system, args, cache_system)
+    MemorySystem.initialize(system, args)
 
     return system
 
@@ -188,8 +184,6 @@ def get_processes(args):
         errouts = args.errout.split(";")
     if args.options != "":
         pargs = args.options.split(";")
-
-    print(inputs, outputs, errouts, pargs)
 
     idx = 0
     for wrkld in workloads:
@@ -216,8 +210,6 @@ def get_processes(args):
 
         multiprocesses.append(process)
         idx += 1
-
-    print(multiprocesses, idx)
 
     return multiprocesses, idx
 

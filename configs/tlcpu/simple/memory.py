@@ -1,5 +1,7 @@
 import math
 
+from caches import *
+
 import m5
 from m5.objects import *
 from m5.util import fatal
@@ -48,7 +50,7 @@ class MetadataCache(Cache):
 
 
 class MemorySystem:
-    def parameterize_crypto_system(self, args, system):
+    def parameterize_crypto_system(args, system):
         # TODO: remove this hack
         bus_bytes = 64
         range_total = AddrRange(
@@ -160,7 +162,27 @@ class MemorySystem:
             system.crypto_ctrl.range_integrity,
         ]
 
-    def initialize(self, system, args, cache_system):
+    def initialize(system, args):
+        system.l2bus = L2XBar()
+        system.l2cache = L2Cache(size=args.l2_size)
+        system.l2cache.connectCPUSideBusPort(system.l2bus.mem_side_ports)
+
+        for core in system.cpu:
+            core.icache = L1ICache(size=args.l1i_size)
+            core.dcache = L1DCache(size=args.l1d_size)
+            core.icache.connectCPU(core)
+            core.dcache.connectCPU(core)
+
+            core.icache.connectMemSideBusPort(system.l2bus.cpu_side_ports)
+            core.dcache.connectMemSideBusPort(system.l2bus.cpu_side_ports)
+
+        if args.l3:
+            system.l3cache = L3Cache(size=args.l3_size)
+            system.l3cache.connectCPUSideBusPort(system.l2cache.mem_side)
+            last_level_cache = system.l3cache
+        else:
+            last_level_cache = system.l2cache
+
         # dramsim specific setup
         system.mem_ctrl = DRAMSim3MemCtrl(
             mem_name="DDR4_8Gb_x8_3200", num_chnls=1
@@ -178,7 +200,7 @@ class MemorySystem:
             system.metadata_cache = MetadataCache(
                 size=args.metadata_cache_size
             )
-            self.parameterize_crypto_system(args, system)
+            MemorySystem.parameterize_crypto_system(args, system)
             system.metadata_cache.connectCPUSideBusPort(
                 system.crypto_ctrl.metadata_cache_side_port
             )
@@ -186,6 +208,6 @@ class MemorySystem:
                 system.mem_bus.cpu_side_ports
             )
             system.crypto_ctrl.mem_side_port = system.mem_bus.cpu_side_ports
-            cache_system.connectMemSide(system.crypto_ctrl.cpu_side_port)
+            last_level_cache.mem_side = system.crypto_ctrl.cpu_side_port
         else:
-            cache_system.connectMemSide(system.mem_bus.cpu_side_ports)
+            last_level_cache.mem_side = system.mem_bus.cpu_side_ports

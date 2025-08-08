@@ -3,34 +3,6 @@ from m5.objects import *
 from m5.util import fatal
 
 
-class CacheSystem:
-    """This class wraps creation of a multi-level cache hierarchy"""
-
-    def initialize(self, system, args):
-        system.l2bus = L2XBar()
-        system.l2cache = L2Cache(size=args.l2_size)
-        system.l2cache.connectCPUSideBusPort(system.l2bus.mem_side_ports)
-
-        for core in system.cpu:
-            core.icache = L1ICache(size=args.l1i_size)
-            core.dcache = L1DCache(size=args.l1d_size)
-            core.icache.connectCPU(core)
-            core.dcache.connectCPU(core)
-
-            core.icache.connectMemSideBusPort(system.l2bus.cpu_side_ports)
-            core.dcache.connectMemSideBusPort(system.l2bus.cpu_side_ports)
-
-        if args.l3:
-            system.l3cache = L3Cache(size=args.l3_size)
-            system.l3cache.connectCPUSideBusPort(system.l2cache.mem_side)
-            self.last_level_cache = system.l3cache
-        else:
-            self.last_level_cache = system.l2cache
-
-    def connectMemSide(self, cpu_side_port):
-        self.last_level_cache.mem_side = cpu_side_port
-
-
 class BasicCache(Cache):
     assoc = 4
     tag_latency = 2
