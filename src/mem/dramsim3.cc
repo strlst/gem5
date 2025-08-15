@@ -117,7 +117,23 @@ DRAMsim3::sendResponse()
 
     DPRINTF(DRAMsim3, "Attempting to send response\n");
 
-    bool success = port.sendTimingResp(responseQueue.front());
+    auto pkt = responseQueue.front();
+    /*
+    // NOTE: uncomment to debug read response sequence
+    if (pkt->isRead()) {
+        if (pkt->hasData()) {
+            printf("RET READ addr=0x%lx data=", pkt->getAddr());
+            uint32_t *data = pkt->getPtr<uint32_t>();
+            for (int i = 0; i < pkt->getSize() / 4; i++) {
+                printf("%x ", *(data + i));
+            }
+            printf("\n");
+        } else {
+            printf("RET READ addr=0x%lx data=no data", pkt->getAddr());
+        }
+    }
+    */
+    bool success = port.sendTimingResp(pkt);
     if (success) {
         responseQueue.pop_front();
 

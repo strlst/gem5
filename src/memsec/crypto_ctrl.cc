@@ -403,6 +403,12 @@ CryptoCtrl::handleResponse(PacketPtr pkt, ResponseSource source)
 
     switch (source) {
     case ResponseSource::MemoryController:
+        // this should not occur, but short circuit responses which should not
+        // be routed to the CPU
+        if (range_integrity.contains(pkt->getAddr())) {
+            return true;
+        }
+
         if (pkt->isRead()) {
             scheduleAESDecryptOp(pkt);
             scheduleMACOp(pkt, MACEventType::DataMACCheck);
