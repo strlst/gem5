@@ -40,3 +40,5 @@ typings
 .clang-format
 compile_commands.json
 compile_commands.events.json
+trace*
+result

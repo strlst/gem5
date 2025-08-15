@@ -56,7 +56,7 @@ def main(args):
 
     # for now just print make commands instead of actually calling make
     for cmd, options, bench, run_id in cmds:
-        suffix = datetime.datetime.now().strftime("%m%d%M%S")
+        suffix = datetime.datetime.now().strftime("%m%d_%H%M")
         outdir = os.path.join("result", f"{bench}_{run_id}_{suffix}")
         os.makedirs(outdir, exist_ok=True)
         final = f'time make spec SPECOUTDIR={outdir} SPECCMD={cmd} SPECOPTIONS="{options}" 2>&1 | tee {outdir}/log &'

@@ -92,7 +92,7 @@ struct IntTreeReq
         std::ostringstream ss;
         ss << "IntegrityTreeReq(";
         ss << "data_addr=0x" << std::hex << data_address << std::dec;
-        ss << "is_read=" << unsigned(is_read);
+        ss << ", is_read=" << unsigned(is_read);
         for (auto node : nodes) {
             ss << ", node_addr=0x" << std::hex << node.address << std::dec
                << "@" << unsigned(node.offset) << (node.completed ? "*" : "");

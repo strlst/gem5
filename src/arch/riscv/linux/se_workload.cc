@@ -529,6 +529,7 @@ riscvHWProbeFunc(SyscallDesc *desc, ThreadContext *tc, VPtr<> pairs,
 static SyscallReturn
 rseqFunc(SyscallDesc *desc, ThreadContext *tc)
 {
+    warn("ignoring syscall rseq(...) (syscall 293)");
     return 0;
 }
 

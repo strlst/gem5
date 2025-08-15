@@ -191,8 +191,8 @@ class MemorySystem:
         system.mem_ctrl.range = system.mem_ranges[0]
 
         # interconnects
-        system.mem_bus = SystemXBar()
-        system.mem_ctrl.port = system.mem_bus.mem_side_ports
+        system.membus = SystemXBar()
+        system.mem_ctrl.port = system.membus.mem_side_ports
 
         # configure intermediary crypto controller if specified
         if args.memsec:
@@ -205,9 +205,9 @@ class MemorySystem:
                 system.crypto_ctrl.metadata_cache_side_port
             )
             system.metadata_cache.connectMemSideBusPort(
-                system.mem_bus.cpu_side_ports
+                system.membus.cpu_side_ports
             )
-            system.crypto_ctrl.mem_side_port = system.mem_bus.cpu_side_ports
+            system.crypto_ctrl.mem_side_port = system.membus.cpu_side_ports
             last_level_cache.mem_side = system.crypto_ctrl.cpu_side_port
         else:
-            last_level_cache.mem_side = system.mem_bus.cpu_side_ports
+            last_level_cache.mem_side = system.membus.cpu_side_ports

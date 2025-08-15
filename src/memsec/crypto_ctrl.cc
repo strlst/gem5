@@ -28,7 +28,7 @@ formattedPacket(PacketPtr pkt)
     ss << ", read=" << unsigned(pkt->isRead());
     ss << ", reqid=" << unsigned(pkt->requestorId());
     //ss << ", flags=0x" << std::hex << unsigned(pkt->req->getFlags())
-       //<< std::dec;
+    //<< std::dec;
     ss << ", hasdata=" << unsigned(pkt->hasData());
     ss << ")";
     return ss.str();
@@ -330,6 +330,10 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         // keep track of writes
         stats.writes++;
     }
+
+    panic_if(range_integrity.contains(pkt->getAddr()),
+        "requests to CryptoCtrl are not allowed to fall into the reserved "
+        "integrity region!\n");
 
     // enqueue integrity tree request in buffer
     std::pair<bool, IntTreeReq> response =
