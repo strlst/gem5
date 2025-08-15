@@ -10,6 +10,8 @@ spec_commands = "benchmark/spec-commands.json"
 
 
 def main(args):
+    print("note: this script is meant to be run in the gem5 root folder!")
+
     cpu = "o3"
     with open(spec_commands) as spec_commands_file:
         commands = json.loads(spec_commands_file.read())
@@ -55,16 +57,28 @@ def main(args):
         return
 
     # for now just print make commands instead of actually calling make
-    for cmd, options, bench, run_id in cmds:
-        suffix = datetime.datetime.now().strftime("%m%d_%H%M")
-        outdir = os.path.join("result", f"{bench}_{run_id}_{suffix}")
-        os.makedirs(outdir, exist_ok=True)
-        final = f'time make spec SPECOUTDIR={outdir} SPECCMD={cmd} SPECOPTIONS="{options}" 2>&1 | tee {outdir}/log &'
-        print(final)
+    with open(args.out_path, "w") as out_file:
+        out_file.write("#!/bin/sh -x\n")
+        for cmd, options, bench, run_id in cmds:
+            suffix = datetime.datetime.now().strftime("%m%d_%H%M")
+            outdir = os.path.join("result", f"{bench}_{run_id}_{suffix}")
+            os.makedirs(outdir, exist_ok=True)
+            final_cmd = f'time make spec SPECOUTDIR={outdir} SPECCMD={cmd} SPECOPTIONS="{options}" 2>&1 | tee {outdir}/log &'
+            out_file.write(f"{final_cmd}\n")
+        mode = os.stat(args.out_path).st_mode
+        mode |= (mode & 0o444) >> 2
+        os.chmod(args.out_path, mode)
+        print(f"file {args.out_path} written")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-o",
+        "--out-path",
+        default="run-spec-benchmarks.sh",
+        help="Output file path to write resulting shell script to",
+    )
     parser.add_argument(
         "-d",
         "--dry",
