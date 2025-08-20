@@ -1,7 +1,8 @@
 #ifndef __MEMSEC_CRYPTO_EVENT_HH__
 #define __MEMSEC_CRYPTO_EVENT_HH__
 
-#include "crypto_ctrl.hh"
+#include "memsec/crypto_ctrl.hh"
+#include "memsec/int_tree.hh"
 
 namespace gem5
 {
@@ -40,14 +41,14 @@ class CryptoReadEvent : public Event
     };
 };
 
-class MACEvent : public Event
+class DataMACEvent : public Event
 {
   private:
     CryptoCtrl *ctrl;
     PacketPtr pkt;
-    MACEventType type;
+    DataMACEventType type;
   public:
-    MACEvent(CryptoCtrl *ctrl, PacketPtr pkt, MACEventType type)
+    DataMACEvent(CryptoCtrl *ctrl, PacketPtr pkt, DataMACEventType type)
         : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt), type(type)
     {
     }
@@ -56,18 +57,40 @@ class MACEvent : public Event
     {
         // process packet by using callback
         switch (type) {
-            case DataMACCheck:
-                ctrl->DataMACCheck(pkt);
-                break;
-            case DataMACUpdate:
-                ctrl->DataMACUpdate(pkt);
-                break;
-            case IntegrityMACCheck:
-                ctrl->IntegrityMACCheck(pkt);
-                break;
-            case IntegrityMACUpdate:
-                ctrl->IntegrityMACUpdate(pkt);
-                break;
+        case DataMACCheck:
+            ctrl->DataMACCheck(pkt);
+            break;
+        case DataMACUpdate:
+            ctrl->DataMACUpdate(pkt);
+            break;
+        }
+    }
+};
+
+class IntegrityMACEvent : public Event
+{
+  private:
+    IntTRB *int_trb;
+    PacketPtr pkt;
+    IntegrityMACEventType type;
+  public:
+    IntegrityMACEvent(IntTRB *int_trb, PacketPtr pkt,
+        IntegrityMACEventType type)
+        : Event(Default_Pri, AutoDelete), int_trb(int_trb), pkt(pkt),
+          type(type)
+    {
+    }
+
+    void process() override
+    {
+        // process packet by using callback
+        switch (type) {
+        case IntegrityMACCheck:
+            int_trb->IntegrityMACCheck(pkt);
+            break;
+        case IntegrityMACUpdate:
+            int_trb->IntegrityMACUpdate(pkt);
+            break;
         }
     }
 };

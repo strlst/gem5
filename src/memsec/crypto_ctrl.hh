@@ -3,7 +3,6 @@
 
 #include <cstdint>
 #include <queue>
-#include <utility>
 
 #include "base/addr_range.hh"
 #include "base/logging.hh"
@@ -12,32 +11,19 @@
 #include "base/types.hh"
 #include "mem/packet.hh"
 #include "mem/port.hh"
+#include "memsec/aes_unit.hh"
 #include "memsec/int_tree.hh"
+#include "memsec/mac_unit.hh"
 #include "params/CryptoCtrl.hh"
 #include "sim/clocked_object.hh"
-
-#define TICK_PER_CYCLE 1000
-#define AFTER_1_CYCLE(t) ((t) + TICK_PER_CYCLE)
-#define AFTER_N_CYCLES(t, n) ((t) + ((n) * TICK_PER_CYCLE))
-#define CYCLES_TO_TICKS(n) ((n) * TICK_PER_CYCLE)
 
 namespace gem5
 {
 
-typedef std::pair<Tick, PacketPtr> DelayedPacket;
-
-enum ResponseSource
-{
-    MemoryController,
-    MetadataCache
-};
-
-enum MACEventType
+enum DataMACEventType
 {
     DataMACCheck,
     DataMACUpdate,
-    IntegrityMACCheck,
-    IntegrityMACUpdate,
 };
 
 struct TreeCheckRequest
@@ -58,18 +44,8 @@ class CryptoCtrl : public ClockedObject
     System* sys;
     RequestorID requestorId;
 
-    // storing earliest ready times
-    Tick aes_enc_ready, aes_dec_ready, mac_ready;
-
     // request dimensioning
-    uint64_t aes_block_bits, aes_block_bytes;
     uint64_t counter_bits, counter_bytes;
-    uint64_t mac_bits, mac_bytes;
-
-    // timing information
-    uint64_t aes_enc_cycles, aes_dec_cycles;
-    uint64_t aes_enc_ii, aes_dec_ii;
-    uint64_t mac_cycles, mac_ii;
 
     uint64_t packing_factor;
     uint64_t bytes_per_address;
@@ -84,8 +60,10 @@ class CryptoCtrl : public ClockedObject
     AddrRange range_integrity;
     AddrRange range_leaves;
 
+    AESUnit* aes_unit;
+    MACUnit* mac_unit;
+
     IntTRB* int_trb;
-    bool int_tree_retry_necessary = false;
 
     struct PktStats : public Group
     {
@@ -95,14 +73,10 @@ class CryptoCtrl : public ClockedObject
         statistics::Scalar cpuTotalCountRecv;
         statistics::Scalar memTotalCountSend;
         statistics::Scalar memTotalCountRecv;
-        statistics::Scalar mdcacheTotalCountSend;
-        statistics::Scalar mdcacheTotalCountRecv;
         statistics::Scalar cpuFailuresCountSend;
         statistics::Scalar cpuRetryCountSend;
         statistics::Scalar memFailuresCountSend;
         statistics::Scalar memRetryCountSend;
-        statistics::Scalar mdcacheFailuresCountSend;
-        statistics::Scalar mdcacheRetryCountSend;
         PktStats(Group* parent)
             : Group(parent),
               ADD_STAT(reads, statistics::units::Count::get(),
@@ -117,10 +91,6 @@ class CryptoCtrl : public ClockedObject
                   "amount of sent packets"),
               ADD_STAT(memTotalCountRecv, statistics::units::Count::get(),
                   "amount of received packets"),
-              ADD_STAT(mdcacheTotalCountSend, statistics::units::Count::get(),
-                  "amount of sent packets"),
-              ADD_STAT(mdcacheTotalCountRecv, statistics::units::Count::get(),
-                  "amount of received packets"),
               ADD_STAT(cpuFailuresCountSend, statistics::units::Count::get(),
                   "amount of response packets which failed to send"),
               ADD_STAT(cpuRetryCountSend, statistics::units::Count::get(),
@@ -128,11 +98,6 @@ class CryptoCtrl : public ClockedObject
               ADD_STAT(memFailuresCountSend, statistics::units::Count::get(),
                   "amount of request packets which failed to send"),
               ADD_STAT(memRetryCountSend, statistics::units::Count::get(),
-                  "amount of request packets sent as a result of a retry"),
-              ADD_STAT(mdcacheFailuresCountSend,
-                  statistics::units::Count::get(),
-                  "amount of request packets which failed to send"),
-              ADD_STAT(mdcacheRetryCountSend, statistics::units::Count::get(),
                   "amount of request packets sent as a result of a retry")
         {
         }
@@ -236,7 +201,7 @@ class CryptoCtrl : public ClockedObject
      * @return true if we can handle the response this cycle, false if the
      *         responder needs to retry later
      */
-    bool handleResponse(PacketPtr pkt, ResponseSource source);
+    bool handleResponse(PacketPtr pkt);
 
     /**
      * Handle a packet functionally. Update the data on a write and get the
@@ -260,9 +225,6 @@ class CryptoCtrl : public ClockedObject
     void sendRangeChange();
 
     // instantiation of the CPU-side ports
-    MetadataCacheSidePort mdcachePort;
-
-    // instantiation of the CPU-side ports
     CPUSidePort cpuPort;
 
     // instantiation of the memory-side port
@@ -271,7 +233,7 @@ class CryptoCtrl : public ClockedObject
     // available operations
     void scheduleAESEncryptOp(PacketPtr pkt);
     void scheduleAESDecryptOp(PacketPtr pkt);
-    void scheduleMACOp(PacketPtr pkt, MACEventType type);
+    void scheduleMACOp(PacketPtr pkt, DataMACEventType type);
 
   public:
     /** constructor

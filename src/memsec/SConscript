@@ -1,9 +1,21 @@
-Import('*')
+Import("*")
 
-SimObject('CryptoCtrl.py', sim_objects=['CryptoCtrl', 'IntTRB'])
+SimObject(
+    "CryptoCtrl.py",
+    sim_objects=[
+        "CryptoCtrl",
+        "AESUnit",
+        "MACUnit",
+        "IntTRB",
+    ],
+)
 
-Source('crypto_ctrl.cc')
-Source('int_tree.cc')
+Source("crypto_ctrl.cc")
+Source("aes_unit.cc")
+Source("mac_unit.cc")
+Source("int_tree.cc")
 
-DebugFlag('CryptoCtrl', 'Intermediating unit for various crypto operations')
-DebugFlag('IntTRB', 'Unit storing in-flight tree update requests')
+DebugFlag("CryptoCtrl", "Intermediating unit for various crypto operations")
+DebugFlag("AESUnit", "Unit providing AES timing")
+DebugFlag("MACUnit", "Unit providing MAC timing")
+DebugFlag("IntTRB", "Unit storing in-flight tree update requests")

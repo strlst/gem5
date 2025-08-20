@@ -152,7 +152,9 @@ int verify(size_t array_size, const data_t result[], const data_t verified[]) {
 int main(void) {
     static data_t results_data[ARRAY_SIZE];
 
+    printf("initiating matmul\n");
     matmul(0, 1, DIM_SIZE, input1_data, input2_data, results_data);
+    printf("verifying result\n");
     int result = verify(ARRAY_SIZE, results_data, verify_data);
     printf(
         "result is %s (%d mismatches)\n",

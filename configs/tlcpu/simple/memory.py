@@ -100,14 +100,6 @@ class MemorySystem:
             int(tree_node_count - leaf_node_count) * tree_node_bytes
         )
         leaf_bytes = int(leaf_node_count * tree_node_bytes)
-        print(
-            range_total,
-            tree_height,
-            math.log2(total_memory_bytes),
-            math.log2(tree_node_count * tree_node_bytes),
-            range_data_bytes,
-            range_integrity_bytes,
-        )
 
         # assign memory regions
         system.crypto_ctrl.range_total = range_total
@@ -129,17 +121,21 @@ class MemorySystem:
 
         # configure crypto controller
         system.crypto_ctrl.bus_bytes = bus_bytes
-        system.crypto_ctrl.aes_enc_cycles = args.crypto_aes_enc_cycles
-        system.crypto_ctrl.aes_dec_cycles = args.crypto_aes_dec_cycles
-        system.crypto_ctrl.aes_enc_ii = args.crypto_aes_enc_ii
-        system.crypto_ctrl.aes_dec_ii = args.crypto_aes_dec_ii
-        system.crypto_ctrl.mac_cycles = args.crypto_mac_cycles
-        system.crypto_ctrl.mac_ii = args.crypto_mac_ii
-        system.crypto_ctrl.aes_block_bits = args.crypto_aes_block_bits
         system.crypto_ctrl.counter_bits = args.crypto_counter_bits
-        system.crypto_ctrl.mac_bits = args.crypto_mac_bits
         system.crypto_ctrl.tree_node_bytes = tree_node_bytes
         system.crypto_ctrl.tree_height = tree_height
+        # configure aes unit
+        aes_unit = system.crypto_ctrl.aes_unit
+        aes_unit.aes_enc_cycles = args.crypto_aes_enc_cycles
+        aes_unit.aes_dec_cycles = args.crypto_aes_dec_cycles
+        aes_unit.aes_enc_ii = args.crypto_aes_enc_ii
+        aes_unit.aes_dec_ii = args.crypto_aes_dec_ii
+        aes_unit.aes_block_bits = args.crypto_aes_block_bits
+        # configure mac unit
+        mac_unit = system.crypto_ctrl.mac_unit
+        mac_unit.mac_cycles = args.crypto_mac_cycles
+        mac_unit.mac_ii = args.crypto_mac_ii
+        mac_unit.mac_bits = args.crypto_mac_bits
 
         int_trb = system.crypto_ctrl.int_trb
         int_trb.size = args.tree_update_buffer_size
@@ -202,7 +198,7 @@ class MemorySystem:
             )
             MemorySystem.parameterize_crypto_system(args, system)
             system.metadata_cache.connectCPUSideBusPort(
-                system.crypto_ctrl.metadata_cache_side_port
+                system.crypto_ctrl.int_trb.metadata_cache_side_port
             )
             system.metadata_cache.connectMemSideBusPort(
                 system.membus.cpu_side_ports

@@ -1,21 +1,26 @@
+#include "memsec/int_tree.hh"
+
 #include <cstdint>
 
 #include "base/trace.hh"
 #include "debug/IntTRB.hh"
-#include "int_tree.hh"
+#include "memsec/crypto_event.hh"
+#include "memsec/util.hh"
 
 namespace gem5
 {
 
 IntTRB::IntTRB(const IntTRBParams& params)
-    : SimObject(params), size(params.size), bus_bytes(params.bus_bytes),
-      packing_factor(params.packing_factor),
+    : SimObject(params), sys(params.system),
+      requestorId(sys->getRequestorId(this)), size(params.size),
+      bus_bytes(params.bus_bytes), packing_factor(params.packing_factor),
       counter_bytes(params.counter_bytes), tree_height(params.tree_height),
       tree_node_bytes(params.tree_node_bytes),
       non_leaf_nodes(
           (std::pow(params.packing_factor, params.tree_height) - 1) /
           (params.packing_factor - 1)),
-      range_integrity(params.range_integrity)
+      range_integrity(params.range_integrity), mac_unit(params.mac_unit),
+      mdcachePort(params.name + ".mdcache_side_port", this), stats(this)
 {
     DPRINTF(IntTRB, "Created integrity tree request buffer with properties\n");
     DPRINTF(IntTRB, "\t\t\t%d queue size\n", params.size);
@@ -26,14 +31,122 @@ IntTRB::IntTRB(const IntTRBParams& params)
         non_leaf_nodes);
 }
 
-std::pair<bool, IntTreeReq>
+Port&
+IntTRB::getPort(const std::string& if_name, PortID idx)
+{
+    panic_if(idx != InvalidPortID, "This object doesn't support vector ports");
+
+    // this is the name from the Python SimObject declaration (CryptoCtrl.py)
+    if (if_name == "metadata_cache_side_port") {
+        return mdcachePort;
+    } else {
+        // pass it along to our super class
+        return SimObject::getPort(if_name, idx);
+    }
+}
+
+bool
+IntTRB::MetadataCacheSidePort::sendPacket(PacketPtr pkt)
+{
+    owner->stats.mdcacheTotalCountSend++;
+
+    // make sure we cannot miss packets
+    // don't even attempt a timing req if the failure queue is not empty
+    bool success = failedPackets.empty() && sendTimingReq(pkt);
+    if (!success) {
+        failedPackets.push(pkt);
+        ++owner->stats.mdcacheFailuresCountSend;
+    }
+    DPRINTF(IntTRB, "sendPacket %s, success=%d\n", formattedPacket(pkt),
+        success);
+
+    return success;
+}
+
+bool
+IntTRB::MetadataCacheSidePort::recvTimingResp(PacketPtr pkt)
+{
+    DPRINTF(IntTRB, "recvTimingResp %s\n", formattedPacket(pkt));
+    owner->stats.mdcacheTotalCountRecv++;
+
+    // just forward
+    return owner->handleResponse(pkt);
+}
+
+void
+IntTRB::MetadataCacheSidePort::recvReqRetry()
+{
+    bool success = true;
+    // use for loop to only process packets currently in queue,
+    // ignorning newly added failed packets
+    //for (int i = 0; i < failedPackets.size(); i++) {
+    while (success && !failedPackets.empty()) {
+        owner->stats.mdcacheRetryCountSend++;
+        // grab next packet
+        auto pkt = failedPackets.front();
+        failedPackets.pop();
+        // try to send packet
+        success = sendTimingReq(pkt);
+        DPRINTF(IntTRB, "recvReqRetry %s, success=%d\n", formattedPacket(pkt),
+            success);
+        // keep packets which were not successfully resent
+        if (!success)
+            failedPackets.push(pkt);
+    }
+    DPRINTF(IntTRB, "recvReqRetry %d failed packets in queue\n",
+        failedPackets.size());
+}
+
+void
+IntTRB::MetadataCacheSidePort::recvRangeChange()
+{
+    owner->sendRangeChange();
+}
+
+bool
+IntTRB::handleResponse(PacketPtr pkt)
+{
+    if (pkt->isRead()) {
+        // depending on whether we are just checking the integrity tree,
+        // or reading to update the integrity tree metadata, we have to
+        // react differently
+        if (contains_request_node(pkt->getAddr(), true)) {
+            // the node we are handling is contained in a read request
+            scheduleMACOp(pkt, IntegrityMACEventType::IntegrityMACCheck);
+        } else {
+            // the node we are handling is contained in a write request
+            // the cache has yielded the data, now we update the counters
+            // and hash
+            PacketPtr new_pkt = createPktFromPkt(pkt, MemCmd::WriteReq);
+            DPRINTF(IntTRB,
+                "created write-after-read request packet %s\n",
+                formattedPacket(new_pkt));
+            update_metadata(new_pkt);
+            mdcachePort.sendPacket(new_pkt);
+        }
+    } else {
+        // forward completion event to queue
+        bool completed = complete_request_node(pkt->getAddr());
+        if (completed) {
+            scheduleMACOp(pkt, IntegrityMACEventType::IntegrityMACUpdate);
+        }
+    }
+
+    return true;
+}
+
+void
 IntTRB::enqueue_request(Addr data_address, bool is_read)
 {
+    panic_if(range_integrity.contains(data_address),
+        "integrity tree cannot translate address 0x%x falling into the "
+        "integrity range %s!\n",
+        data_address, range_integrity.to_string());
+
     // create request
-    IntTreeReq new_request = IntTreeReq(data_address, is_read);
-    if (is_full()) {
-        return std::make_pair(false, new_request);
-    }
+    IntTreeReq new_request = IntTreeReq(serial++, data_address, is_read);
+    // TODO: what if queue is full?
+    // if (is_full()) {}
 
     // NOTE: the latency of address translation can probably be hidden in
     // case packing_factor is not a power of 2, and if it is, the
@@ -54,11 +167,6 @@ IntTRB::enqueue_request(Addr data_address, bool is_read)
             "range %s\n",
             node_address, range_integrity.to_string());
 
-        // if one of the nodes is currently busy, we cannot fulfill this
-        // request
-        if (contains_request_node(node_address))
-            return std::make_pair(false, new_request);
-
         // add node to new request
         new_request.add_request_node(node_address, node_offset);
 
@@ -69,7 +177,13 @@ IntTRB::enqueue_request(Addr data_address, bool is_read)
     }
 
     queue.emplace_back(new_request);
-    return std::make_pair(true, new_request);
+
+    for (auto& node : new_request.nodes) {
+        // create and send packets for each layer
+        PacketPtr packet_fetch_md = createPkt(node.address, tree_node_bytes,
+            requestorId, MemCmd::ReadReq);
+        mdcachePort.sendPacket(packet_fetch_md);
+    }
 }
 
 inline std::list<IntTreeReq>::iterator
@@ -138,8 +252,8 @@ IntTRB::complete_request_node(Addr node_address)
     for (auto it = queue.begin(); it != queue.end(); it++) {
         if (it->complete(node_address)) {
             DPRINTF(IntTRB, "finished metadata %s 0x%x, %s\n",
-                it->is_read ? "read" : "write",
-                node_address, it->to_string());
+                it->is_read ? "read" : "write", node_address,
+                it->to_string());
             if (it->completed_layers >= tree_height) {
                 // TODO: perform on-chip root node counter update
                 return true;
@@ -156,7 +270,9 @@ IntTRB::release_request(Addr node_address)
     for (auto it = queue.begin(); it != queue.end(); it++) {
         if (it->contains_request_node(node_address)) {
             panic_if(it->completed_layers < tree_height,
-                "request was released even though it's not complete!\n");
+                "request %d was released even though it's not complete!"
+                "(%d < %d)\n",
+                it->serial, it->completed_layers, tree_height);
             DPRINTF(IntTRB,
                 "all metadata writes complete for %s, deleting "
                 "request from integrity tree request buffer\n",
@@ -166,6 +282,38 @@ IntTRB::release_request(Addr node_address)
         }
     }
     panic("could not find element in integrity tree request buffer\n");
+}
+
+void
+IntTRB::IntegrityMACCheck(PacketPtr pkt)
+{
+    DPRINTF(IntTRB, "finished integrity MAC check %s\n", formattedPacket(pkt));
+    bool completed = complete_request_node(pkt->getAddr());
+    if (completed) {
+        release_request(pkt->getAddr());
+    }
+}
+
+void
+IntTRB::IntegrityMACUpdate(PacketPtr pkt)
+{
+    DPRINTF(IntTRB, "finished integrity MAC update %s\n",
+        formattedPacket(pkt));
+    // theoretically we would update the MAC here
+    release_request(pkt->getAddr());
+}
+
+void
+IntTRB::scheduleMACOp(PacketPtr pkt, IntegrityMACEventType type)
+{
+    schedule(new IntegrityMACEvent(this, pkt, type),
+        mac_unit->get_earliest_ready_time(pkt));
+}
+
+void
+IntTRB::sendRangeChange()
+{
+    // no CPU to send range change to
 }
 
 };
