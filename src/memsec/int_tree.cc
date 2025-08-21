@@ -136,6 +136,45 @@ IntTRB::handleResponse(PacketPtr pkt)
 }
 
 void
+IntTRB::dispatch_requests()
+{
+    // current dispatch logic:
+    // do not dispatch requests which contain nodes that are already
+    // dispatched in other requests
+    int dispatched_count = 0;
+    for (auto& request : queue) {
+        if (is_any_dispatched(request))
+            continue;
+
+        dispatch_request(request);
+        dispatched_count++;
+    }
+
+    DPRINTF(IntTRB, "dispatched %d requests\n", dispatched_count);
+}
+
+void
+IntTRB::dispatch_request(IntTreeReq& request)
+{
+    request.dispatched = true;
+    for (auto& node : request.nodes) {
+        // keep track of dispatched addresses
+        dispatched_node_addresses.insert(node.address);
+
+        // create and send packets for each layer
+        PacketPtr packet_fetch_md = createPkt(node.address, tree_node_bytes,
+            requestorId, MemCmd::ReadReq);
+        mdcachePort.sendPacket(packet_fetch_md);
+    }
+}
+
+void
+IntTRB::register_release_callback(std::function<void()> callback)
+{
+    release_callback = callback;
+}
+
+void
 IntTRB::enqueue_request(Addr data_address, bool is_read)
 {
     panic_if(range_integrity.contains(data_address),
@@ -177,13 +216,7 @@ IntTRB::enqueue_request(Addr data_address, bool is_read)
     }
 
     queue.emplace_back(new_request);
-
-    for (auto& node : new_request.nodes) {
-        // create and send packets for each layer
-        PacketPtr packet_fetch_md = createPkt(node.address, tree_node_bytes,
-            requestorId, MemCmd::ReadReq);
-        mdcachePort.sendPacket(packet_fetch_md);
-    }
+    dispatch_requests();
 }
 
 inline std::list<IntTreeReq>::iterator
@@ -237,6 +270,17 @@ IntTRB::contains_request_node(Addr node_address, bool read_flag)
 };
 
 bool
+IntTRB::is_any_dispatched(IntTreeReq& req)
+{
+    for (auto node : req.nodes) {
+        auto it = dispatched_node_addresses.find(node.address);
+        if (it != dispatched_node_addresses.end())
+            return true;
+    }
+    return false;
+};
+
+bool
 IntTRB::contains_request_node(Addr node_address)
 {
     for (auto& request : queue) {
@@ -250,12 +294,18 @@ bool
 IntTRB::complete_request_node(Addr node_address)
 {
     for (auto it = queue.begin(); it != queue.end(); it++) {
+        // skip undispatched nodes
+        if (!it->dispatched)
+            continue;
+
         if (it->complete(node_address)) {
             DPRINTF(IntTRB, "finished metadata %s 0x%x, %s\n",
                 it->is_read ? "read" : "write", node_address,
                 it->to_string());
             if (it->completed_layers >= tree_height) {
-                // TODO: perform on-chip root node counter update
+                // NOTE: perform on-chip root node counter update
+                // this can be done always in a single cycle since each node
+                // is an on-chip register by design
                 return true;
             }
             return false;
@@ -268,7 +318,16 @@ void
 IntTRB::release_request(Addr node_address)
 {
     for (auto it = queue.begin(); it != queue.end(); it++) {
+        // cannot release undispatched requests
+        if (!it->dispatched)
+            continue;
+
         if (it->contains_request_node(node_address)) {
+            // make sure to free addresses from set
+            for (auto& node : it->nodes) {
+                dispatched_node_addresses.erase(node.address);
+            }
+
             panic_if(it->completed_layers < tree_height,
                 "request %d was released even though it's not complete!"
                 "(%d < %d)\n",
@@ -277,7 +336,10 @@ IntTRB::release_request(Addr node_address)
                 "all metadata writes complete for %s, deleting "
                 "request from integrity tree request buffer\n",
                 it->to_string());
+
             queue.erase(it);
+
+            release_callback();
             return;
         }
     }

@@ -44,6 +44,9 @@ class CryptoCtrl : public ClockedObject
     System* sys;
     RequestorID requestorId;
 
+    // keep track of failed packets
+    uint64_t cpu_failed_packets = 0;
+
     // request dimensioning
     uint64_t counter_bits, counter_bytes;
 
@@ -63,6 +66,7 @@ class CryptoCtrl : public ClockedObject
     AESUnit* aes_unit;
     MACUnit* mac_unit;
 
+    std::set<Addr> write_queue;
     IntTRB* int_trb;
 
     struct PktStats : public Group
@@ -174,6 +178,9 @@ class CryptoCtrl : public ClockedObject
         {
         }
 
+        // helper to deduplicate successful and failed packet code paths
+        inline void processPacket(PacketPtr pkt);
+
         // called by the cpu side controller to actually transmit packets
         bool sendPacket(PacketPtr pkt);
 
@@ -264,12 +271,19 @@ class CryptoCtrl : public ClockedObject
     getPort(const std::string& if_name, PortID idx = InvalidPortID) override;
 
     /**
+     * If there are failed packets from the CPU side (due to full buffers),
+     * use this callback to retry those packets.
+     */
+    void retryFailedCPUPackets();
+
+    /**
      * If data sent from the CPU side needs to be encrypted, emulate
      * encryption feature functionally and also its timing.
      *
      * @param pkt requesting packet
      */
-    void CryptoWrite(PacketPtr pkt);
+    void opCryptoWrite(PacketPtr pkt);
+    void opCryptoWriteCallback(PacketPtr pkt);
 
     /**
      * If data sent from the memory side needs to be decrypted, emulate
@@ -277,7 +291,7 @@ class CryptoCtrl : public ClockedObject
      *
      * @param pkt requesting packet
      */
-    void CryptoRead(PacketPtr pkt);
+    void opCryptoRead(PacketPtr pkt);
 
     /**
      * In case a data node has been decrypted, perform MAC computation to
@@ -285,7 +299,7 @@ class CryptoCtrl : public ClockedObject
      *
      * @param pkt requesting packet
      */
-    void DataMACCheck(PacketPtr pkt);
+    void opDataMACCheck(PacketPtr pkt);
 
     /**
      * In case a data node has been encrypted, perform MAC computation for
@@ -294,23 +308,7 @@ class CryptoCtrl : public ClockedObject
      *
      * @param pkt requesting packet
      */
-    void DataMACUpdate(PacketPtr pkt);
-
-    /**
-     * Callback in case a metadata tree node has been checked for integrity
-     *
-     * @param pkt requesting packet
-     */
-    void IntegrityMACCheck(PacketPtr pkt);
-
-    /**
-     * In case a metadata tree node counter has been updated, perform
-     * final MAC computation (by simulating the delay introduced by the
-     * on-chip MAC engine)
-     *
-     * @param pkt requesting packet
-     */
-    void IntegrityMACUpdate(PacketPtr pkt);
+    void opDataMACUpdate(PacketPtr pkt);
 };
 
 } // namespace gem5

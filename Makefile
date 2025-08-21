@@ -15,7 +15,7 @@ GEM5_CONFIG_CRYPTO:=--crypto-counter-bits=56 --crypto-mac-bits=64 --crypto-packi
 # running flags
 # binary is used for bare metal tests
 BINARY:=tests/test-progs/matmul/bin/riscv/linux/matmul
-DEBUG_FLAGS:=CryptoCtrl,IntTRB,Vma,SyscallVerbose#,O3CPUAll,Cache,DRAMsim3
+DEBUG_FLAGS:=CryptoCtrl,IntTRB,Vma,SyscallVerbose,DRAMsim3#,O3CPUAll,Cache,DRAMsim3
 
 # tracediff flags
 GEM5_TRACEDIFF=util/tracediff

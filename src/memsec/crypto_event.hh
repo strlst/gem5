@@ -20,7 +20,7 @@ class CryptoWriteEvent : public Event
     void process() override
     {
         // process packet by using callback
-        ctrl->CryptoWrite(pkt);
+        ctrl->opCryptoWrite(pkt);
     }
 };
 
@@ -37,7 +37,7 @@ class CryptoReadEvent : public Event
     void process() override
     {
         // process packet by using callback
-        ctrl->CryptoRead(pkt);
+        ctrl->opCryptoRead(pkt);
     };
 };
 
@@ -58,10 +58,10 @@ class DataMACEvent : public Event
         // process packet by using callback
         switch (type) {
         case DataMACCheck:
-            ctrl->DataMACCheck(pkt);
+            ctrl->opDataMACCheck(pkt);
             break;
         case DataMACUpdate:
-            ctrl->DataMACUpdate(pkt);
+            ctrl->opDataMACUpdate(pkt);
             break;
         }
     }

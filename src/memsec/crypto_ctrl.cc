@@ -60,6 +60,10 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
         range_leaves.to_string(),
         std::log2(range_leaves.end() - range_leaves.start()));
 
+    int_trb->register_release_callback(
+        std::bind(&CryptoCtrl::retryFailedCPUPackets, this));
+    DPRINTF(CryptoCtrl, "Registered release callback for IntTRB unit\n");
+
     // sanity check
     assert(range_data.size() + range_integrity.size() <= range_total.size());
     assert(range_data.size() > range_integrity.size());
@@ -151,6 +155,17 @@ CryptoCtrl::CPUSidePort::recvRespRetry()
         failedPackets.size());
 }
 
+inline void
+CryptoCtrl::MemSidePort::processPacket(PacketPtr pkt)
+{
+    // NOTE: for now differentiate crypto writes and reads just by checking
+    // this field
+    if (!pkt->isRead()) {
+        // perform crypto write postamble
+        owner->opCryptoWriteCallback(pkt);
+    }
+}
+
 bool
 CryptoCtrl::MemSidePort::sendPacket(PacketPtr pkt)
 {
@@ -162,6 +177,8 @@ CryptoCtrl::MemSidePort::sendPacket(PacketPtr pkt)
     if (!success) {
         failedPackets.push(pkt);
         ++owner->stats.memFailuresCountSend;
+    } else {
+        processPacket(pkt);
     }
     DPRINTF(CryptoCtrl, "sendPacket %s, success=%d\n", formattedPacket(pkt),
         success);
@@ -195,8 +212,11 @@ CryptoCtrl::MemSidePort::recvReqRetry()
         DPRINTF(CryptoCtrl, "recvReqRetry %s, success=%d\n",
             formattedPacket(pkt), success);
         // keep packets which were not successfully resent
-        if (!success)
+        if (!success) {
             failedPackets.push(pkt);
+        } else {
+            processPacket(pkt);
+        }
     }
     DPRINTF(CryptoCtrl, "recvReqRetry %d failed packets in queue\n",
         failedPackets.size());
@@ -224,10 +244,25 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         "requests to CryptoCtrl are not allowed to fall into the reserved "
         "integrity region!\n");
 
-    // enqueue integrity tree request in buffer
+    // first enqueue integrity tree request in buffer
+    //panic_if(int_trb->is_full(),
+    //"currently queue is not allowed to be full\n");
+    if (int_trb->is_full()) {
+        // fail on full queue
+        cpu_failed_packets++;
+        return false;
+    }
 
-    panic_if(int_trb->is_full(),
-        "currently queue is not allowed to be full\n");
+    if (auto it = write_queue.find(pkt->getAddr()); it != write_queue.end()) {
+        DPRINTF(CryptoCtrl,
+            "request for address 0x%x placed while there is an unresolved "
+            "on-going write request\n",
+            pkt->getAddr());
+        cpu_failed_packets++;
+        return false;
+    }
+
+    // queue definitely has space
     int_trb->enqueue_request(pkt->getAddr(), pkt->isRead());
 
     if (pkt->isRead()) {
@@ -256,19 +291,26 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
 }
 
 void
-CryptoCtrl::CryptoWrite(PacketPtr pkt)
+CryptoCtrl::opCryptoWrite(PacketPtr pkt)
 {
-    // for now ignore return value
-    // TODO: should we block sendpacket until MAC unit is available?
-    bool success = memPort.sendPacket(pkt);
-    panic_if(!success, "mem port send packet is not allowed to fail\n");
+    // we are handling failed packets gracefully in the memport implementation
+    memPort.sendPacket(pkt);
+}
+
+void
+CryptoCtrl::opCryptoWriteCallback(PacketPtr pkt)
+{
+    //panic_if(!success, "mem port send packet is not allowed to fail\n");
     scheduleMACOp(pkt, DataMACEventType::DataMACUpdate);
+    // free up address again
+    write_queue.erase(pkt->getAddr());
+    retryFailedCPUPackets();
 }
 
 bool
 CryptoCtrl::handleResponse(PacketPtr pkt)
 {
-    DPRINTF(CryptoCtrl, "handleResponse %s, type=%s\n", formattedPacket(pkt));
+    DPRINTF(CryptoCtrl, "handleResponse %s\n", formattedPacket(pkt));
 
     // NOTE: integrity side of things is decoupled
 
@@ -290,7 +332,7 @@ CryptoCtrl::handleResponse(PacketPtr pkt)
 }
 
 void
-CryptoCtrl::CryptoRead(PacketPtr pkt)
+CryptoCtrl::opCryptoRead(PacketPtr pkt)
 {
     // TODO: should we block sendpacket until MAC unit is available?
     // for now ignore return value
@@ -301,17 +343,28 @@ CryptoCtrl::CryptoRead(PacketPtr pkt)
 }
 
 void
-CryptoCtrl::DataMACCheck(PacketPtr pkt)
+CryptoCtrl::opDataMACCheck(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "finished data MAC check %s\n", formattedPacket(pkt));
     // theoretically we would check the MAC here
 }
 
 void
-CryptoCtrl::DataMACUpdate(PacketPtr pkt)
+CryptoCtrl::opDataMACUpdate(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "finished data MAC update %s\n", formattedPacket(pkt));
     // theoretically we would update the MAC here
+}
+
+void
+CryptoCtrl::retryFailedCPUPackets()
+{
+    if (cpu_failed_packets > 0) {
+        DPRINTF(CryptoCtrl, "there are %d failed packets, retrying\n",
+            cpu_failed_packets);
+        cpu_failed_packets = 0;
+        cpuPort.sendRetryReq();
+    }
 }
 
 void
@@ -337,6 +390,9 @@ CryptoCtrl::sendRangeChange()
 void
 CryptoCtrl::scheduleAESEncryptOp(PacketPtr pkt)
 {
+    // we need to mark address as busy so that they cannot compete with
+    // concurrent read requests
+    write_queue.insert(pkt->getAddr());
     // this would be the correct time to manipulate a packer during a write
     // AESEncrypt(pkt);
     // schedule future event, when the crypto unit finished encrypting

@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <list>
 #include <queue>
 
@@ -57,6 +58,7 @@ struct IntTreeReq
     // up to the node before the root
     std::list<IntTreeReqNode> nodes = std::list<IntTreeReqNode>();
     uint8_t completed_layers = 0;
+    bool dispatched = false;
 
     IntTreeReq(uint64_t serial, Addr data_address, bool is_read)
         : serial(serial), data_address(data_address), is_read(is_read)
@@ -133,11 +135,18 @@ class IntTRB : public SimObject
     const uint64_t non_leaf_nodes;
     AddrRange range_integrity;
     std::list<IntTreeReq> queue;
+    std::set<Addr> dispatched_node_addresses;
 
     // identify requests
     uint64_t serial = 0;
 
     MACUnit* mac_unit;
+
+    // dispatch logic
+    void dispatch_requests();
+
+    // release logic
+    std::function<void()> release_callback;
 
     class MetadataCacheSidePort : public RequestPort
     {
@@ -171,6 +180,8 @@ class IntTRB : public SimObject
 
   public:
     IntTRB(const IntTRBParams& params);
+
+    void register_release_callback(std::function<void()> callback);
 
     struct PktStats : public Group
     {
@@ -211,14 +222,30 @@ class IntTRB : public SimObject
     void update_metadata(PacketPtr pkt);
     void release_request(Addr node_addr);
     bool complete_request_node(Addr node_address);
+    void dispatch_request(IntTreeReq& request);
 
     // state query
+    bool is_any_dispatched(IntTreeReq& req);
     bool contains_request_node(Addr node_address, bool read_flag);
     bool contains_request_node(Addr node_address);
 
     // events
     void scheduleMACOp(PacketPtr pkt, IntegrityMACEventType type);
+
+    /**
+     * Callback in case a metadata tree node has been checked for integrity
+     *
+     * @param pkt requesting packet
+     */
     void IntegrityMACCheck(PacketPtr pkt);
+
+    /**
+     * In case a metadata tree node counter has been updated, perform
+     * final MAC computation (by simulating the delay introduced by the
+     * on-chip MAC engine)
+     *
+     * @param pkt requesting packet
+     */
     void IntegrityMACUpdate(PacketPtr pkt);
 };
 
