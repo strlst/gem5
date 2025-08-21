@@ -245,7 +245,7 @@ def main():
     Options.addSEOptions(parser)
     args = parser.parse_args()
     system = create_system(args)
-    # config_filesystem(system, args)
+    config_filesystem(system, args)
     set_threaded_workload(system, args)
 
     # create root of gem5 hierarchy
