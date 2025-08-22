@@ -22,6 +22,18 @@ from common import (
 from common.FileSystemConfig import config_filesystem
 
 
+def add_common_args(parser):
+    parser.add_argument(
+        "-I",
+        "--maxinsts",
+        action="store",
+        type=int,
+        default=None,
+        help="""Total number of instructions to
+                                            simulate (default: run forever)""",
+    )
+
+
 def add_custom_args(parser):
     # parser.add_argument(
     # "binary",
@@ -234,6 +246,9 @@ def set_threaded_workload(system, args):
         sys.exit(1)
     for cpu, process in zip(system.cpu, multiprocesses):
         cpu.workload = process
+        if args.maxinsts:
+            print(f"limiting execution to {args.maxinsts} instructions")
+            cpu.max_insts_any_thread = args.maxinsts
         cpu.createThreads()
 
 
@@ -241,6 +256,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="A simple system for secure memory experiments."
     )
+    add_common_args(parser)
     add_custom_args(parser)
     Options.addSEOptions(parser)
     args = parser.parse_args()

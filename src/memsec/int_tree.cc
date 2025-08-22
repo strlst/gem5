@@ -166,6 +166,9 @@ IntTRB::dispatch_request(IntTreeReq& request)
             requestorId, MemCmd::ReadReq);
         mdcachePort.sendPacket(packet_fetch_md);
     }
+    DPRINTF(IntTRB,
+        "increased dispatched node address queue size to %d entries\n",
+        dispatched_node_addresses.size());
 }
 
 void
@@ -327,6 +330,11 @@ IntTRB::release_request(Addr node_address)
             for (auto& node : it->nodes) {
                 dispatched_node_addresses.erase(node.address);
             }
+
+            // signal size
+            DPRINTF(IntTRB,
+                "reduced dispatched node address queue to %d entries\n",
+                dispatched_node_addresses.size());
 
             panic_if(it->completed_layers < tree_height,
                 "request %d was released even though it's not complete!"

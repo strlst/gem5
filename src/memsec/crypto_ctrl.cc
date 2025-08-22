@@ -304,6 +304,8 @@ CryptoCtrl::opCryptoWriteCallback(PacketPtr pkt)
     scheduleMACOp(pkt, DataMACEventType::DataMACUpdate);
     // free up address again
     write_queue.erase(pkt->getAddr());
+    DPRINTF(CryptoCtrl, "reduced write queue to %d entries\n",
+        write_queue.size());
     retryFailedCPUPackets();
 }
 
