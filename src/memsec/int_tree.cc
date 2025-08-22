@@ -180,6 +180,9 @@ IntTRB::register_release_callback(std::function<void()> callback)
 void
 IntTRB::enqueue_request(Addr data_address, bool is_read)
 {
+    // keep statistics
+    stats.enqueued++;
+
     panic_if(range_integrity.contains(data_address),
         "integrity tree cannot translate address 0x%x falling into the "
         "integrity range %s!\n",
