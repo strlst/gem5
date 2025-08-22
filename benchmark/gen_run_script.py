@@ -10,7 +10,7 @@ spec_commands = "benchmark/spec-commands.json"
 
 
 def main(args):
-    print("note: this script is meant to be run in the gem5 root folder!")
+    print("note: this script is meant to be run in the gem5 root folder")
 
     cpu = "o3"
     with open(spec_commands) as spec_commands_file:
@@ -60,7 +60,7 @@ def main(args):
                         print(f"copying from {joined} to {bench}")
                         shutil.copy(joined, os.path.join("benchmark", bench))
                         break
-            cmd_options = f' SPECOPTIONS="{run}"' if run else ""
+            cmd_options = f" SPECOPTIONS=\"--options '{run}'\"" if run else ""
             cmd_stdin = f' SPECSTDIN="--input {stdin}"' if stdin else ""
             cmd_stdout = f' SPECSTDOUT="--output {stdout}"' if stdout else ""
             cmd_stderr = f' SPECSTDERR="--errout {stderr}"' if stderr else ""
