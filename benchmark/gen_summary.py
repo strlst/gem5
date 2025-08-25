@@ -4,6 +4,10 @@ import os
 import re
 import sys
 
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
+
 dramsim3_fields = {
     "num_cycles",
     "num_reads_done",
@@ -77,7 +81,8 @@ def save(args, statistics):
         print(f'saving to file "{args.out_path}"')
         out = open(args.out_path, "w")
     out.write(f"{str(statistics)}\n")
-    out.close()
+    if args.out_path:
+        out.close()
 
 
 def dramsim3_split(line):
@@ -135,7 +140,91 @@ def main(args):
             gem5_fields,
             gem5_split,
         )
-    save(args, statistics)
+    # save(args, statistics)
+
+    # process extracted statistics
+    data = {"by-dramsim3": dict(), "by-gem5": dict()}
+    descriptions = dict()
+    for benchmark in statistics:
+        experiment = benchmark.lstrip("result/")
+        for channel in statistics[benchmark]["dramsim3"]:
+            if channel not in data["by-dramsim3"]:
+                data["by-dramsim3"][channel] = dict()
+            for stat in statistics[benchmark]["dramsim3"][channel]:
+                if stat not in data["by-dramsim3"][channel]:
+                    data["by-dramsim3"][channel][stat] = dict()
+                value = statistics[benchmark]["dramsim3"][channel][stat][0]
+                data["by-dramsim3"][channel][stat][experiment] = (
+                    float(value) if "." in value else int(value)
+                )
+                if stat not in descriptions:
+                    descriptions[stat] = statistics[benchmark]["dramsim3"][
+                        channel
+                    ][stat][1]
+        for stat in statistics[benchmark]["gem5"]:
+            if stat not in data["by-gem5"]:
+                data["by-gem5"][stat] = dict()
+            value = statistics[benchmark]["gem5"][stat][0]
+            data["by-gem5"][stat][experiment] = (
+                float(value) if "." in value else int(value)
+            )
+            if stat not in descriptions:
+                descriptions[stat] = statistics[benchmark]["gem5"][stat][1]
+
+    # create output dir
+    os.makedirs("plots", exist_ok=True)
+    print(f'created folder "plots"')
+
+    df_gem5 = pd.DataFrame(data["by-gem5"]).sort_index()
+    df = df_gem5.reset_index().rename(columns={"index": "benchmark"})
+    df["mode"] = (
+        df["benchmark"]
+        .str.contains("no")
+        .map({True: "no_memsec", False: "memsec"})
+    )
+    df["benchmark"] = df["benchmark"].map(lambda col: col.split("_")[0])
+
+    df_gem5 = prepare_df(pd.DataFrame(data["by-gem5"]))
+    for stat in gem5_fields:
+        plot_stat(df_gem5, stat, descriptions[stat])
+    df_dramsim3 = prepare_df(pd.DataFrame(data["by-dramsim3"]["channel0"]))
+    for stat in dramsim3_fields:
+        plot_stat(df_dramsim3, stat, descriptions[stat])
+
+
+def prepare_df(df):
+    df = df.sort_index().reset_index().rename(columns={"index": "benchmark"})
+    df["mode"] = (
+        df["benchmark"]
+        .str.contains("no")
+        .map({True: "no_memsec", False: "memsec"})
+    )
+    df["benchmark"] = df["benchmark"].map(lambda col: col.split("_")[0])
+    return df
+
+
+def plot_stat(df, stat, title):
+    sns.set(style="whitegrid")
+    plt.rcParams.update(
+        {
+            "text.usetex": True,
+            "font.family": "sans-serif",
+            "font.size": "26",
+        }
+    )
+    plt.figure(figsize=(20, 8))
+    plt.xticks(rotation=90)
+    ax = sns.barplot(x="benchmark", y=stat, data=df, hue="mode")
+    ax.legend(loc="upper right", bbox_to_anchor=(1.0, 1.0))
+    ax.set_title(title)
+    plt.tight_layout()
+
+    filename = os.path.join("plots", f"gem5-{stat}.png")
+    fig = ax.get_figure()
+    fig.savefig(filename)
+    print(f"saved figure gem5-{stat} to file {filename}")
+
+    plt.close(fig)
 
 
 if __name__ == "__main__":

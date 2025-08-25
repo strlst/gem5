@@ -86,9 +86,9 @@ def main(args):
                     "result",
                     f"{bench}_{run_id}_{suffix}_{target.replace('-', '_')}",
                 )
-                os.makedirs(outdir, exist_ok=True)
-                print(f"created folder {outdir}")
-                final_cmd = f"time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC={target} 2>&1 > {outdir}/log &"
+                # os.makedirs(outdir, exist_ok=True)
+                # print(f"created folder {outdir}")
+                final_cmd = f"mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC={target} 2>&1 > {outdir}/log &"
                 out_file.write(f"{final_cmd}\n")
         mode = os.stat(args.out_path).st_mode
         mode |= (mode & 0o444) >> 2
