@@ -81,11 +81,15 @@ def main(args):
         out_file.write("#!/bin/sh -x\n")
         for cmd, bench, run_id, extras in cmds:
             suffix = datetime.datetime.now().strftime("%m%d_%H%M")
-            outdir = os.path.join("result", f"{bench}_{run_id}_{suffix}")
-            os.makedirs(outdir, exist_ok=True)
-            print(f"created folder {outdir}")
-            final_cmd = f"time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} 2>&1 > {outdir}/log &"
-            out_file.write(f"{final_cmd}\n")
+            for target in ["memsec", "no-memsec"]:
+                outdir = os.path.join(
+                    "result",
+                    f"{bench}_{run_id}_{suffix}_{target.replace('-', '_')}",
+                )
+                os.makedirs(outdir, exist_ok=True)
+                print(f"created folder {outdir}")
+                final_cmd = f"time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC={target} 2>&1 > {outdir}/log &"
+                out_file.write(f"{final_cmd}\n")
         mode = os.stat(args.out_path).st_mode
         mode |= (mode & 0o444) >> 2
         os.chmod(args.out_path, mode)
