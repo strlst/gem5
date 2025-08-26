@@ -23,7 +23,7 @@ def generate_configurations():
     crypto_int_params = {
         "metadata-cache-size": ["4KiB", "4KiB", "8192KiB", "4KiB"],
         "metadata-cache-assoc": [8, 8, 16, 8],
-        "int-trb-size": [32, 0, 32, 64],
+        "int-trb-size": [32, -1, 32, 64],
     }
 
     configurations_ops = [
@@ -130,7 +130,7 @@ def main(args):
                         for k in conf
                     ]
                 )
-                final_cmd = f"mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=memsec 2>&1 GEM5_CONFIG_CRYPTO_PERF='{crypto_params}' > {outdir}/log &"
+                final_cmd = f"mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=memsec GEM5_CONFIG_CRYPTO_PERF='{crypto_params}' 2>&1 > {outdir}/log &"
                 out_file.write(f"{final_cmd}\n")
             outdir = os.path.join(
                 "result",
