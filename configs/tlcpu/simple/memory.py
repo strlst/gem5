@@ -138,7 +138,7 @@ class MemorySystem:
         mac_unit.mac_bits = args.crypto_mac_bits
 
         int_trb = system.crypto_ctrl.int_trb
-        int_trb.size = args.tree_update_buffer_size
+        int_trb.size = args.int_trb_size
         int_trb.bus_bytes = bus_bytes
         int_trb.packing_factor = args.crypto_packing_factor
         int_trb.counter_bytes = args.crypto_counter_bits // 8

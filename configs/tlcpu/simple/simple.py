@@ -145,12 +145,11 @@ def add_custom_args(parser):
         help="Metadata cache size (default: 16KiB)",
     )
     parser.add_argument(
-        "--tree-update-buffer-size",
+        "--int-trb-size",
         default=32,
         type=int,
-        help="Number of permissible in-flight requests (default: 32)",
+        help="Number of permissible in-flight requests (default: 32, set to -1 for infinite size)",
     )
-    parser.add_argument("rest", nargs=argparse.REMAINDER)
 
 
 def create_system(args):

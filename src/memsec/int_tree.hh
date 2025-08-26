@@ -125,12 +125,12 @@ class IntTRB : public SimObject
     System* sys;
     RequestorID requestorId;
 
-    uint8_t size;
-    uint64_t bus_bytes;
-    uint64_t packing_factor;
-    uint64_t counter_bytes;
-    uint64_t tree_height;
-    uint64_t tree_node_bytes;
+    int8_t size;
+    uint32_t bus_bytes;
+    uint32_t packing_factor;
+    uint32_t counter_bytes;
+    uint32_t tree_height;
+    uint32_t tree_node_bytes;
     // this part is constant with respect to system instantiation
     const uint64_t non_leaf_nodes;
     AddrRange range_integrity;
@@ -210,7 +210,10 @@ class IntTRB : public SimObject
     Port& getPort(const std::string& if_name, PortID idx);
     bool handleResponse(PacketPtr pkt);
 
-    bool is_full() { return queue.size() >= size; }
+    bool is_full() {
+        // prevent queue from filling up when set to -1
+        return size >= 0 && queue.size() >= size;
+    }
 
     //std::pair<bool, IntTreeReq>
     void enqueue_request(Addr data_address, bool is_read);

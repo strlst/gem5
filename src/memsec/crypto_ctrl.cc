@@ -245,9 +245,8 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         "integrity region!\n");
 
     // first enqueue integrity tree request in buffer
-    //panic_if(int_trb->is_full(),
-    //"currently queue is not allowed to be full\n");
     if (int_trb->is_full()) {
+        DPRINTF(CryptoCtrl, "IntTRB is full, refusing request\n");
         // fail on full queue
         cpu_failed_packets++;
         return false;

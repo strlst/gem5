@@ -188,10 +188,11 @@ IntTRB::enqueue_request(Addr data_address, bool is_read)
         "integrity range %s!\n",
         data_address, range_integrity.to_string());
 
+    // check size constraint
+    assert(size < 0 || queue.size() < size);
+
     // create request
     IntTreeReq new_request = IntTreeReq(serial++, data_address, is_read);
-    // TODO: what if queue is full?
-    // if (is_full()) {}
 
     // NOTE: the latency of address translation can probably be hidden in
     // case packing_factor is not a power of 2, and if it is, the
