@@ -130,13 +130,13 @@ def main(args):
                         for k in conf
                     ]
                 )
-                final_cmd = f"time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=memsec 2>&1 GEM5_CONFIG_CRYPTO_PERF='{crypto_params}' > {outdir}/log &"
+                final_cmd = f"mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=memsec 2>&1 GEM5_CONFIG_CRYPTO_PERF='{crypto_params}' > {outdir}/log &"
                 out_file.write(f"{final_cmd}\n")
             outdir = os.path.join(
                 "result",
                 f"{bench}_{run_id}_{suffix}_no_memsec",
             )
-            final_cmd = f"time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=no-memsec 2>&1 > {outdir}/log &"
+            final_cmd = f"mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=no-memsec 2>&1 > {outdir}/log &"
             out_file.write(f"{final_cmd}\n")
         mode = os.stat(args.out_path).st_mode
         mode |= (mode & 0o444) >> 2
