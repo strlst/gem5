@@ -36,8 +36,8 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
     DPRINTF(CryptoCtrl, "\t\t\t%d total memory bytes (%f MiB)\n",
         params.range_total.size(),
         (double)params.range_total.size() / 1024.f / 1024.f);
-    DPRINTF(CryptoCtrl, "\t\t\t%d counter bits (%d bytes)\n", counter_bits,
-        counter_bytes);
+    DPRINTF(CryptoCtrl, "\t\t\t%d counter bits (%d bytes)\n",
+        counter_bytes * 8, counter_bytes);
     DPRINTF(CryptoCtrl,
         "\t\t\t%d integrity tree node bits (%d bytes, %d packing factor, %d "
         "height)\n",

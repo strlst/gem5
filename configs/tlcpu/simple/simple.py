@@ -145,6 +145,10 @@ def add_custom_args(parser):
         help="Metadata cache size (default: 16KiB)",
     )
     parser.add_argument(
+        "--metadata-cache-assoc",
+        help="Metadata cache associativity (default: 8, should be at least as large as tree height)",
+    )
+    parser.add_argument(
         "--int-trb-size",
         default=32,
         type=int,

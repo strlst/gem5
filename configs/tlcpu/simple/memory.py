@@ -147,9 +147,12 @@ class MemorySystem:
         int_trb.range_integrity = system.crypto_ctrl.range_integrity
 
         # configure metadata cache
-        system.metadata_cache.assoc = int(
-            2 ** math.ceil(math.log2(tree_height))
-        )
+        if args.metadata_cache_assoc:
+            system.metadata_cache.assoc = args.metadata_cache_assoc
+        else:
+            system.metadata_cache.assoc = int(
+                2 ** math.ceil(math.log2(tree_height))
+            )
         system.metadata_cache.write_allocator.cache_line_size = tree_node_bytes
 
         # update memory ranges

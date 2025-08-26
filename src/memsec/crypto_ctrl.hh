@@ -48,7 +48,7 @@ class CryptoCtrl : public ClockedObject
     uint64_t cpu_failed_packets = 0;
 
     // request dimensioning
-    uint64_t counter_bits, counter_bytes;
+    uint64_t counter_bytes;
 
     uint64_t packing_factor;
     uint64_t bytes_per_address;
