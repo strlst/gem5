@@ -175,21 +175,12 @@ def main(args):
     os.makedirs("plots", exist_ok=True)
     print(f'created folder "plots"')
 
-    df_gem5 = pd.DataFrame(data["by-gem5"]).sort_index()
-    df = df_gem5.reset_index().rename(columns={"index": "benchmark"})
-    df["mode"] = (
-        df["benchmark"]
-        .str.contains("no")
-        .map({True: "no_memsec", False: "memsec"})
-    )
-    df["benchmark"] = df["benchmark"].map(lambda col: col.split("_")[0])
-
     df_gem5 = prepare_df(pd.DataFrame(data["by-gem5"]))
     for stat in gem5_fields:
-        plot_stat(df_gem5, stat, descriptions[stat])
+        plot_stat(df_gem5, stat, descriptions[stat], "gem5")
     df_dramsim3 = prepare_df(pd.DataFrame(data["by-dramsim3"]["channel0"]))
     for stat in dramsim3_fields:
-        plot_stat(df_dramsim3, stat, descriptions[stat])
+        plot_stat(df_dramsim3, stat, descriptions[stat], "dramsim3")
 
 
 def prepare_df(df):
@@ -203,7 +194,7 @@ def prepare_df(df):
     return df
 
 
-def plot_stat(df, stat, title):
+def plot_stat(df, stat, title, simulator):
     sns.set(style="whitegrid")
     plt.rcParams.update(
         {
@@ -219,10 +210,10 @@ def plot_stat(df, stat, title):
     ax.set_title(title)
     plt.tight_layout()
 
-    filename = os.path.join("plots", f"gem5-{stat}.png")
+    filename = os.path.join("plots", f"{simulator}-{stat}.png")
     fig = ax.get_figure()
     fig.savefig(filename)
-    print(f"saved figure gem5-{stat} to file {filename}")
+    print(f"saved figure {simulator}-{stat} to file {filename}")
 
     plt.close(fig)
 
