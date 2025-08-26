@@ -1,12 +1,48 @@
 #!/usr/bin/env python3
 import argparse
 import datetime
+import itertools
 import json
 import os
 import shutil
 import sys
 
 spec_commands = "benchmark/spec-commands.json"
+spec_selected = ["519.lbm_r", "538.imagick_r", "505.mcf_r", "557.xz_r"]
+
+
+def generate_configurations():
+    crypto_op_params = {
+        "crypto-aes-enc-cycles": [0, 80],
+        "crypto-aes-dec-cycles": [0, 80],
+        "crypto-aes-enc-ii": [0, 20],
+        "crypto-aes-dec-ii": [0, 20],
+        "crypto-mac-cycles": [0, 40],
+        "crypto-mac-ii": [0, 10],
+    }
+    crypto_int_params = {
+        "metadata-cache-size": ["4KiB", "4KiB", "8192KiB", "4KiB"],
+        "metadata-cache-assoc": [8, 8, 16, 8],
+        "int-trb-size": [32, 0, 32, 64],
+    }
+
+    configurations_ops = [
+        dict() for _ in range(len(crypto_op_params[list(crypto_op_params)[0]]))
+    ]
+    for param in crypto_op_params:
+        for i, value in enumerate(crypto_op_params[param]):
+            configurations_ops[i][param] = value
+
+    configurations_ints = [
+        dict()
+        for _ in range(len(crypto_int_params[list(crypto_int_params)[0]]))
+    ]
+    for param in crypto_int_params:
+        for i, value in enumerate(crypto_int_params[param]):
+            configurations_ints[i][param] = value
+
+    for p in list(itertools.product(configurations_ops, configurations_ints)):
+        yield p[0] | p[1]
 
 
 def main(args):
@@ -18,6 +54,8 @@ def main(args):
 
     cmds = []
     for bench in commands["benchmarks"]:
+        if bench not in spec_selected:
+            continue
         cmd = os.path.join(
             commands["specdir"], commands["benchmarks"][bench]["command"]
         )
@@ -81,15 +119,25 @@ def main(args):
         out_file.write("#!/bin/sh -x\n")
         for cmd, bench, run_id, extras in cmds:
             suffix = datetime.datetime.now().strftime("%m%d_%H%M")
-            for target in ["memsec", "no-memsec"]:
+            for i, conf in enumerate(generate_configurations()):
                 outdir = os.path.join(
                     "result",
-                    f"{bench}_{run_id}_{suffix}_{target.replace('-', '_')}",
+                    f"{bench}_{run_id}_{suffix}_memsec_{i}",
                 )
-                # os.makedirs(outdir, exist_ok=True)
-                # print(f"created folder {outdir}")
-                final_cmd = f"mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC={target} 2>&1 > {outdir}/log &"
+                crypto_params = " ".join(
+                    [
+                        f"--{k}={f'\"{conf[k]}\"' if type(conf[k]) == str else conf[k]}"
+                        for k in conf
+                    ]
+                )
+                final_cmd = f"time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=memsec 2>&1 GEM5_CONFIG_CRYPTO_PERF='{crypto_params}' > {outdir}/log &"
                 out_file.write(f"{final_cmd}\n")
+            outdir = os.path.join(
+                "result",
+                f"{bench}_{run_id}_{suffix}_no_memsec",
+            )
+            final_cmd = f"time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=no-memsec 2>&1 > {outdir}/log &"
+            out_file.write(f"{final_cmd}\n")
         mode = os.stat(args.out_path).st_mode
         mode |= (mode & 0o444) >> 2
         os.chmod(args.out_path, mode)
