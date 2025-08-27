@@ -250,6 +250,8 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         return false;
     }
 
+    // block reads for queued but as of yet unscheduled writes
+    // to prevent read requests from overtaking delayed write requests
     if (auto it = write_queue.find(pkt->getAddr()); it != write_queue.end()) {
         DPRINTF(CryptoCtrl,
             "request for address 0x%x placed while there is an unresolved "
