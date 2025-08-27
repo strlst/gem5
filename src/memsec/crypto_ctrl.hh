@@ -71,8 +71,10 @@ class CryptoCtrl : public ClockedObject
 
     struct PktStats : public Group
     {
-        statistics::Scalar reads;
-        statistics::Scalar writes;
+        statistics::Scalar totalReads;
+        statistics::Scalar totalWrites;
+        statistics::Scalar successfulReads;
+        statistics::Scalar successfulWrites;
         statistics::Scalar cpuTotalCountSend;
         statistics::Scalar cpuTotalCountRecv;
         statistics::Scalar memTotalCountSend;
@@ -83,10 +85,14 @@ class CryptoCtrl : public ClockedObject
         statistics::Scalar memRetryCountSend;
         PktStats(Group* parent)
             : Group(parent),
-              ADD_STAT(reads, statistics::units::Count::get(),
-                  "amount of read requests"),
-              ADD_STAT(writes, statistics::units::Count::get(),
-                  "amount of write requests"),
+              ADD_STAT(totalReads, statistics::units::Count::get(),
+                  "total amount of read requests"),
+              ADD_STAT(totalWrites, statistics::units::Count::get(),
+                  "total amount of write requests"),
+              ADD_STAT(successfulReads, statistics::units::Count::get(),
+                  "amount of successful read requests"),
+              ADD_STAT(successfulWrites, statistics::units::Count::get(),
+                  "amount of successful write requests"),
               ADD_STAT(cpuTotalCountSend, statistics::units::Count::get(),
                   "amount of sent packets"),
               ADD_STAT(cpuTotalCountRecv, statistics::units::Count::get(),

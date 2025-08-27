@@ -232,13 +232,11 @@ bool
 CryptoCtrl::handleRequest(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "handleRequest %s\n", formattedPacket(pkt));
-    if (pkt->isRead()) {
-        // keep track of reads
-        stats.reads++;
-    } else {
-        // keep track of writes
-        stats.writes++;
-    }
+    // keep track of reads and writes
+    if (pkt->isRead())
+        stats.totalReads++;
+    else
+        stats.totalWrites++;
 
     panic_if(range_integrity.contains(pkt->getAddr()),
         "requests to CryptoCtrl are not allowed to fall into the reserved "
@@ -285,6 +283,12 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         // decryption
         scheduleAESEncryptOp(pkt);
     }
+
+    // keep track of successful operations
+    if (pkt->isRead())
+        stats.successfulReads++;
+    else
+        stats.successfulWrites++;
 
     return true;
 }

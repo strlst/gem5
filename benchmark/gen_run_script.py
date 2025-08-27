@@ -21,7 +21,7 @@ def generate_configurations():
         "crypto-mac-ii": [0, 10],
     }
     crypto_int_params = {
-        "metadata-cache-size": ["4KiB", "4KiB", "8192KiB", "4KiB"],
+        "metadata-cache-size": ["4KiB", "4KiB", "4096KiB", "4KiB"],
         "metadata-cache-assoc": [8, 8, 16, 8],
         "int-trb-size": [32, -1, 32, 64],
     }
@@ -114,23 +114,29 @@ def main(args):
     if args.dry:
         return
 
+    print(f"configuration information:")
+    for i, conf in enumerate(generate_configurations()):
+        print(f"  memsec_{i} {conf}")
+
     # for now just print make commands instead of actually calling make
     with open(args.out_path, "w") as out_file:
         out_file.write("#!/bin/sh -x\n")
         for cmd, bench, run_id, extras in cmds:
             suffix = datetime.datetime.now().strftime("%m%d_%H%M")
             for i, conf in enumerate(generate_configurations()):
+                # shorthand = "".join(["".join([w[0] for w in k.split("-")]) + str(conf[k]) for k in conf])
                 outdir = os.path.join(
                     "result",
+                    # f"{bench}_{run_id}_{suffix}_{shorthand}",
                     f"{bench}_{run_id}_{suffix}_memsec_{i}",
                 )
                 crypto_params = " ".join(
                     [
-                        f"--{k}={f'\"{conf[k]}\"' if type(conf[k]) == str else conf[k]}"
+                        f"--{k}={f'\'{conf[k]}\'' if type(conf[k]) == str else conf[k]}"
                         for k in conf
                     ]
                 )
-                final_cmd = f"mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=memsec GEM5_CONFIG_CRYPTO_PERF='{crypto_params}' 2>&1 > {outdir}/log &"
+                final_cmd = f'mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=memsec GEM5_CONFIG_CRYPTO_PERF="{crypto_params}" 2>&1 > {outdir}/log &'
                 out_file.write(f"{final_cmd}\n")
             outdir = os.path.join(
                 "result",

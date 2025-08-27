@@ -118,6 +118,53 @@ def analyze(statistics, target, fname, fields, splitfunc):
             )
 
 
+def str_after_n_th_index(string, char, n):
+    i = -1
+    for _ in range(n):
+        i = string.find(char, i + 1)
+    return string[i + 1 :]
+
+
+def str_before_n_th_index(string, char, n):
+    i = -1
+    for _ in range(n):
+        i = string.find(char, i + 1)
+    return string[:i]
+
+
+def prepare_df(df):
+    df = df.sort_index().reset_index().rename(columns={"index": "benchmark"})
+    df["mode"] = df["benchmark"].map(lambda s: str_after_n_th_index(s, "_", 5))
+    df["benchmark"] = df["benchmark"].map(
+        lambda s: str_before_n_th_index(s, "_", 3)
+    )
+    return df
+
+
+def plot_stat(df, stat, title, simulator):
+    sns.set(style="whitegrid")
+    plt.rcParams.update(
+        {
+            "text.usetex": True,
+            "font.family": "sans-serif",
+            "font.size": "26",
+        }
+    )
+    plt.figure(figsize=(20, 8))
+    plt.xticks(rotation=90)
+    ax = sns.barplot(x="benchmark", y=stat, data=df, hue="mode")
+    ax.legend(loc="upper right", bbox_to_anchor=(1.0, 1.0))
+    ax.set_title(title)
+    plt.tight_layout()
+
+    filename = os.path.join("plots", f"{simulator}-{stat}.png")
+    fig = ax.get_figure()
+    fig.savefig(filename)
+    print(f"saved figure {simulator}-{stat} to file {filename}")
+
+    plt.close(fig)
+
+
 def main(args):
     statistics = dict()
     for root, dirs, files in os.walk("result"):
@@ -181,41 +228,6 @@ def main(args):
     df_dramsim3 = prepare_df(pd.DataFrame(data["by-dramsim3"]["channel0"]))
     for stat in dramsim3_fields:
         plot_stat(df_dramsim3, stat, descriptions[stat], "dramsim3")
-
-
-def prepare_df(df):
-    df = df.sort_index().reset_index().rename(columns={"index": "benchmark"})
-    df["mode"] = (
-        df["benchmark"]
-        .str.contains("no")
-        .map({True: "no_memsec", False: "memsec"})
-    )
-    df["benchmark"] = df["benchmark"].map(lambda col: col.split("_")[0])
-    return df
-
-
-def plot_stat(df, stat, title, simulator):
-    sns.set(style="whitegrid")
-    plt.rcParams.update(
-        {
-            "text.usetex": True,
-            "font.family": "sans-serif",
-            "font.size": "26",
-        }
-    )
-    plt.figure(figsize=(20, 8))
-    plt.xticks(rotation=90)
-    ax = sns.barplot(x="benchmark", y=stat, data=df, hue="mode")
-    ax.legend(loc="upper right", bbox_to_anchor=(1.0, 1.0))
-    ax.set_title(title)
-    plt.tight_layout()
-
-    filename = os.path.join("plots", f"{simulator}-{stat}.png")
-    fig = ax.get_figure()
-    fig.savefig(filename)
-    print(f"saved figure {simulator}-{stat} to file {filename}")
-
-    plt.close(fig)
 
 
 if __name__ == "__main__":

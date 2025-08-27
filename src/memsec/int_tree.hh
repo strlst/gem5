@@ -125,7 +125,7 @@ class IntTRB : public SimObject
     System* sys;
     RequestorID requestorId;
 
-    int8_t size;
+    int32_t size;
     uint32_t bus_bytes;
     uint32_t packing_factor;
     uint32_t counter_bytes;

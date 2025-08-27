@@ -189,7 +189,8 @@ IntTRB::enqueue_request(Addr data_address, bool is_read)
         data_address, range_integrity.to_string());
 
     // check size constraint
-    assert(size < 0 || queue.size() < size);
+    panic_if(size >= 0 && queue.size() > size,
+        "int trb is not allowed to exceed %d elements\n", size);
 
     // create request
     IntTreeReq new_request = IntTreeReq(serial++, data_address, is_read);
@@ -222,7 +223,13 @@ IntTRB::enqueue_request(Addr data_address, bool is_read)
         node_id = parent_id;
     }
 
+    // finally add request to queue
+    DPRINTF(IntTRB,
+        "enqueueing 0x%x (read=%d) to buffer with %d entries (max %d)\n",
+        data_address, is_read, queue.size(), size);
     queue.emplace_back(new_request);
+
+    // dispatch all dispatchable requests
     dispatch_requests();
 }
 
@@ -349,6 +356,9 @@ IntTRB::release_request(Addr node_address)
                 "request from integrity tree request buffer\n",
                 it->to_string());
 
+            DPRINTF(IntTRB,
+                "dequeueing 0x%x (read=%d) from buffer with %d entries\n",
+                it->data_address, it->is_read, queue.size());
             queue.erase(it);
 
             release_callback();
