@@ -76,13 +76,10 @@ def check_fields(line, fields):
 
 
 def save(args, statistics):
-    out = sys.stdout
     if args.out_path:
         print(f'saving to file "{args.out_path}"')
-        out = open(args.out_path, "w")
-    out.write(f"{str(statistics)}\n")
-    if args.out_path:
-        out.close()
+        with open(args.out_path) as out:
+            out.write(f"{str(statistics)}\n")
 
 
 def dramsim3_split(line):
@@ -143,6 +140,7 @@ def prepare_df(df):
 
 def plot_stat(df, stat, title, simulator):
     sns.set(style="whitegrid")
+    fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(24, 20), sharex=True)
     plt.rcParams.update(
         {
             "text.usetex": True,
@@ -150,15 +148,16 @@ def plot_stat(df, stat, title, simulator):
             "font.size": "26",
         }
     )
-    plt.figure(figsize=(20, 8))
     plt.xticks(rotation=90)
-    ax = sns.barplot(x="benchmark", y=stat, data=df, hue="mode")
-    ax.legend(loc="upper right", bbox_to_anchor=(1.0, 1.0))
-    ax.set_title(title)
+    for i, data in enumerate([df, df[df["mode"] != "no_memsec"]]):
+        ax = sns.barplot(
+            x="benchmark", y=stat, data=data, hue="mode", ax=axes[i]
+        )
+        ax.legend(loc="upper right", bbox_to_anchor=(1.0, 1.0))
+        ax.set_title(title)
     plt.tight_layout()
 
     filename = os.path.join("plots", f"{simulator}-{stat}.png")
-    fig = ax.get_figure()
     fig.savefig(filename)
     print(f"saved figure {simulator}-{stat} to file {filename}")
 
@@ -187,7 +186,9 @@ def main(args):
             gem5_fields,
             gem5_split,
         )
-    # save(args, statistics)
+
+    if args.out_path:
+        save(args, statistics)
 
     # process extracted statistics
     data = {"by-dramsim3": dict(), "by-gem5": dict()}

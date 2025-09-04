@@ -21,7 +21,7 @@ DEBUG_FLAGS:=CryptoCtrl,IntTRB,Vma,SyscallVerbose,DRAMsim3#,O3CPUAll,Cache,DRAMs
 # tracediff flags
 GEM5_TRACEDIFF=util/tracediff
 GEM5_TRACEDIFF_DEBUG:=--debug-flags=Exec
-GEM5_TRACEDIFF_CONFIG:=configs/tlcpu/simple/simple.py --num-cores=1 --ooo '--memsec|--no-memsec'
+GEM5_TRACEDIFF_CONFIG:=configs/tlcpu/simple/simple.py --num-cores=1 --no-ooo '--memsec|--no-memsec'
 
 # pipeview
 PIPEVIEW:=util/o3-pipeview.py
@@ -80,7 +80,14 @@ remote-build:
 	rsync -av --exclude=build,m5out --delete . $(REMOTE_HOSTNAME):$(REMOTE_DIR)/
 	ssh $(REMOTE_HOSTNAME) "cd $(REMOTE_DIR); make build"
 
-clean:
+force-clean:
 	rm -rf m5out build
+
+tidy:
+	rm -rf result plots
+
+clean:
+	@echo -n "Are you sure? [y/N] " && read ans && if [ $${ans:-'N'} = 'y' ]; then make clean; fi
+
 
 .PHONY: run linux build debug build build-dev remote-run remote-debug remote-build test-stream clean

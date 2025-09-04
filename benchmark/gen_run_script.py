@@ -21,9 +21,16 @@ def generate_configurations():
         "crypto-mac-ii": [0, 10],
     }
     crypto_int_params = {
-        "metadata-cache-size": ["4KiB", "4KiB", "4096KiB", "4KiB"],
-        "metadata-cache-assoc": [8, 8, 16, 8],
-        "int-trb-size": [32, -1, 32, 64],
+        "metadata-cache-size": [
+            "4KiB",
+            "4KiB",
+            "4KiB",
+            "4096KiB",
+            "4KiB",
+            "4KiB",
+        ],
+        "metadata-cache-assoc": [8, 8, 16, 8, 8, 1],
+        "int-trb-size": [32, 1024, 32, 32, 64, 32],
     }
 
     configurations_ops = [
@@ -45,7 +52,17 @@ def generate_configurations():
         yield p[0] | p[1]
 
 
+def print_configurations():
+    print(f"configuration information:")
+    for i, conf in enumerate(generate_configurations()):
+        print(f"  memsec_{i} {conf}")
+
+
 def main(args):
+    if args.list_configurations:
+        print_configurations()
+        return
+
     print("note: this script is meant to be run in the gem5 root folder")
 
     cpu = "o3"
@@ -114,9 +131,7 @@ def main(args):
     if args.dry:
         return
 
-    print(f"configuration information:")
-    for i, conf in enumerate(generate_configurations()):
-        print(f"  memsec_{i} {conf}")
+    print_configurations()
 
     # for now just print make commands instead of actually calling make
     with open(args.out_path, "w") as out_file:
@@ -157,6 +172,12 @@ if __name__ == "__main__":
         "--out-path",
         default="run-spec-benchmarks.sh",
         help="Output file path to write resulting shell script to",
+    )
+    parser.add_argument(
+        "-l",
+        "--list-configurations",
+        action=argparse.BooleanOptionalAction,
+        help="List configurations only",
     )
     parser.add_argument(
         "-d",
