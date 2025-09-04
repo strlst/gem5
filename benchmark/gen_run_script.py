@@ -12,15 +12,13 @@ spec_selected = ["519.lbm_r", "538.imagick_r", "505.mcf_r", "557.xz_r"]
 
 
 def generate_configurations():
-    crypto_op_params = {
-        "crypto-aes-enc-cycles": [0, 80],
-        "crypto-aes-dec-cycles": [0, 80],
-        "crypto-aes-enc-ii": [0, 20],
-        "crypto-aes-dec-ii": [0, 20],
-        "crypto-mac-cycles": [0, 40],
-        "crypto-mac-ii": [0, 10],
-    }
-    crypto_int_params = {
+    crypto_params = {
+        "crypto-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 0],
+        "crypto-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 0],
+        "crypto-aes-enc-ii": [20, 20, 20, 20, 20, 20, 0],
+        "crypto-aes-dec-ii": [20, 20, 20, 20, 20, 20, 0],
+        "crypto-mac-cycles": [40, 40, 40, 40, 40, 40, 0],
+        "crypto-mac-ii": [10, 10, 10, 10, 10, 10, 0],
         "metadata-cache-size": [
             "4KiB",
             "4KiB",
@@ -28,28 +26,20 @@ def generate_configurations():
             "4096KiB",
             "4KiB",
             "4KiB",
+            "4KiB",
         ],
-        "metadata-cache-assoc": [8, 8, 16, 8, 8, 1],
-        "int-trb-size": [32, 1024, 32, 32, 64, 32],
+        "metadata-cache-assoc": [8, 8, 16, 8, 8, 1, 8],
+        "int-trb-size": [32, 1024, 32, 32, 64, 32, 32],
     }
 
-    configurations_ops = [
-        dict() for _ in range(len(crypto_op_params[list(crypto_op_params)[0]]))
+    configurations = [
+        dict() for _ in range(len(crypto_params[list(crypto_params)[0]]))
     ]
-    for param in crypto_op_params:
-        for i, value in enumerate(crypto_op_params[param]):
-            configurations_ops[i][param] = value
+    for param in crypto_params:
+        for i, value in enumerate(crypto_params[param]):
+            configurations[i][param] = value
 
-    configurations_ints = [
-        dict()
-        for _ in range(len(crypto_int_params[list(crypto_int_params)[0]]))
-    ]
-    for param in crypto_int_params:
-        for i, value in enumerate(crypto_int_params[param]):
-            configurations_ints[i][param] = value
-
-    for p in list(itertools.product(configurations_ops, configurations_ints)):
-        yield p[0] | p[1]
+    yield from configurations
 
 
 def print_configurations():
