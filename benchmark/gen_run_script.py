@@ -12,24 +12,28 @@ spec_selected = ["519.lbm_r", "538.imagick_r", "505.mcf_r", "557.xz_r"]
 
 
 def generate_configurations():
+    # configuration k takes the k-th parameter of each list
+    # each configuration might as well be hardcoded directly, but this way
+    # saves spelling each parameter for each configuration
     crypto_params = {
-        "crypto-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 0],
-        "crypto-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 0],
-        "crypto-aes-enc-ii": [20, 20, 20, 20, 20, 20, 0],
-        "crypto-aes-dec-ii": [20, 20, 20, 20, 20, 20, 0],
-        "crypto-mac-cycles": [40, 40, 40, 40, 40, 40, 0],
-        "crypto-mac-ii": [10, 10, 10, 10, 10, 10, 0],
+        "crypto-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 80, 0],
+        "crypto-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 80, 0],
+        "crypto-aes-enc-ii": [20, 20, 20, 20, 20, 20, 20, 0],
+        "crypto-aes-dec-ii": [20, 20, 20, 20, 20, 20, 20, 0],
+        "crypto-mac-cycles": [40, 40, 40, 40, 40, 40, 40, 0],
+        "crypto-mac-ii": [10, 10, 10, 10, 10, 10, 10, 0],
         "metadata-cache-size": [
-            "4KiB",
-            "4KiB",
-            "4KiB",
+            "32KiB",
+            "32KiB",
+            "32KiB",
+            "32KiB",
             "4096KiB",
-            "4KiB",
-            "4KiB",
-            "4KiB",
+            "32KiB",
+            "32KiB",
+            "32KiB",
         ],
-        "metadata-cache-assoc": [8, 8, 16, 8, 8, 1, 8],
-        "int-trb-size": [32, 1024, 32, 32, 64, 32, 32],
+        "metadata-cache-assoc": [8, 8, 8, 32, 8, 8, 1, 8],
+        "int-trb-size": [32, 1024, 1, 32, 32, 64, 32, 32],
     }
 
     configurations = [
