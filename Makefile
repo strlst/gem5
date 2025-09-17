@@ -65,7 +65,7 @@ gdb:
 	gdb $(GEM5)
 
 build:
-	$(DEVELOP_PREFIX_CMD) python3 $$(which scons) $(DEVELOP_LINKER) build/RISCV/gem5.opt -j$$(nproc)
+	python3 $$(which scons) --linker=mold build/RISCV/gem5.opt -j$$(nproc)
 
 build-dev:
 	bear -- python3 $$(which scons) --linker=mold build/RISCV/gem5.opt -j$$(nproc)
