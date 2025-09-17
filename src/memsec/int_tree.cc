@@ -143,6 +143,10 @@ IntTRB::dispatch_requests()
     // dispatched in other requests (avoid conflicting dispatches)
     int dispatched_count = 0;
     for (auto& request : queue) {
+        // don't dispatch dispatched requests
+        if (request.dispatched)
+            continue;
+        // don't dispatch conflicting requests
         if (is_any_dispatched(request))
             continue;
 
@@ -156,6 +160,10 @@ IntTRB::dispatch_requests()
 void
 IntTRB::dispatch_request(IntTreeReq& request)
 {
+    // sanity check
+    panic_if(request.dispatched,
+        "cannot dispatch already dispatched request!\n");
+
     request.dispatched = true;
     for (auto& node : request.nodes) {
         // keep track of dispatched addresses
