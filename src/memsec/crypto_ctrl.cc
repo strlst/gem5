@@ -142,14 +142,15 @@ CryptoCtrl::CPUSidePort::recvRespRetry()
         owner->stats.cpuRetryCountSend++;
         // grab next packet
         auto pkt = failedPackets.front();
-        failedPackets.pop();
+
         // try to send packet
         success = sendTimingResp(pkt);
         DPRINTF(CryptoCtrl, "recvReqRetry %s, success=%d\n",
             formattedPacket(pkt), success);
-        // keep packets which were not successfully resent
-        if (!success)
-            failedPackets.push(pkt);
+
+        // remove packets which were successfully resent
+        if (success)
+            failedPackets.pop();
     }
     DPRINTF(CryptoCtrl, "recvReqRetry %d failed packets in queue\n",
         failedPackets.size());
@@ -205,16 +206,17 @@ CryptoCtrl::MemSidePort::recvReqRetry()
     while (success && !failedPackets.empty()) {
         owner->stats.memRetryCountSend++;
         // grab next packet
+        // we want to keep packets which were not successfully resent
         auto pkt = failedPackets.front();
-        failedPackets.pop();
+
         // try to send packet
         success = sendTimingReq(pkt);
         DPRINTF(CryptoCtrl, "recvReqRetry %s, success=%d\n",
             formattedPacket(pkt), success);
-        // keep packets which were not successfully resent
-        if (!success) {
-            failedPackets.push(pkt);
-        } else {
+
+        if (success) {
+            // on success, delete packet
+            failedPackets.pop();
             processPacket(pkt);
         }
     }

@@ -80,6 +80,9 @@ remote-build:
 	rsync -av --exclude=build,m5out --delete . $(REMOTE_HOSTNAME):$(REMOTE_DIR)/
 	ssh $(REMOTE_HOSTNAME) "cd $(REMOTE_DIR); make build"
 
+summary:
+	python3 benchmark/gen_summary.py
+
 force-clean:
 	rm -rf m5out build
 
