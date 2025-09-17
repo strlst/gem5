@@ -140,7 +140,7 @@ IntTRB::dispatch_requests()
 {
     // current dispatch logic:
     // do not dispatch requests which contain nodes that are already
-    // dispatched in other requests
+    // dispatched in other requests (avoid conflicting dispatches)
     int dispatched_count = 0;
     for (auto& request : queue) {
         if (is_any_dispatched(request))
@@ -361,6 +361,10 @@ IntTRB::release_request(Addr node_address)
                 it->data_address, it->is_read, queue.size());
             queue.erase(it);
 
+            // dispatch all dispatchable requests
+            dispatch_requests();
+
+            // call on CPU callback
             release_callback();
             return;
         }
