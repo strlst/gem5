@@ -69,6 +69,8 @@ class CryptoCtrl : public ClockedObject
     std::set<Addr> write_queue;
     IntTRB* int_trb;
 
+    bool retryFailedCPUPacketsLater = false;
+
     struct PktStats : public Group
     {
         statistics::Scalar totalReads;
@@ -189,6 +191,9 @@ class CryptoCtrl : public ClockedObject
 
         // called by the cpu side controller to actually transmit packets
         bool sendPacket(PacketPtr pkt);
+
+        // keep track of ongoing recvReqRetry
+        bool currentlyRetrying = false;
 
       protected:
         // called by the mem side controller when responding

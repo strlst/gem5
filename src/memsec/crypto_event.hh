@@ -17,6 +17,7 @@ class CryptoWriteEvent : public Event
         : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt)
     {
     }
+
     void process() override
     {
         // process packet by using callback
@@ -34,6 +35,7 @@ class CryptoReadEvent : public Event
         : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt)
     {
     }
+
     void process() override
     {
         // process packet by using callback

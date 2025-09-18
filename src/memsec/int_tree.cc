@@ -370,10 +370,12 @@ IntTRB::release_request(Addr node_address)
             queue.erase(it);
 
             // dispatch all dispatchable requests
+            // TODO: this should be possible but it's not, why?
             dispatch_requests();
 
             // call on CPU callback
             release_callback();
+
             return;
         }
     }

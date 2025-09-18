@@ -1,5 +1,6 @@
 # gem5 flags
 GEM5:=build/RISCV/gem5.opt
+# set MEMSEC:=no-memsec for no memory security
 MEMSEC:=memsec
 GEM5_PIPEVIEW:=--debug-flags=O3PipeView --debug-start=0 --debug-file=trace.out
 GEM5_CONFIG:=configs/tlcpu/simple/simple.py --num-cores=1 --ooo --$(MEMSEC)
