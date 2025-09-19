@@ -16,12 +16,12 @@ def generate_configurations():
     # each configuration might as well be hardcoded directly, but this way
     # saves spelling each parameter for each configuration
     crypto_params = {
-        "crypto-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 80, 0],
-        "crypto-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 80, 0],
-        "crypto-aes-enc-ii": [20, 20, 20, 20, 20, 20, 20, 0],
-        "crypto-aes-dec-ii": [20, 20, 20, 20, 20, 20, 20, 0],
-        "crypto-mac-cycles": [40, 40, 40, 40, 40, 40, 40, 0],
-        "crypto-mac-ii": [10, 10, 10, 10, 10, 10, 10, 0],
+        "crypto-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 0],
+        "crypto-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 0],
+        "crypto-aes-enc-ii": [20, 20, 20, 20, 20, 20, 0],
+        "crypto-aes-dec-ii": [20, 20, 20, 20, 20, 20, 0],
+        "crypto-mac-cycles": [40, 40, 40, 40, 40, 40, 0],
+        "crypto-mac-ii": [10, 10, 10, 10, 10, 10, 0],
         "metadata-cache-size": [
             "32KiB",
             "32KiB",
@@ -30,10 +30,9 @@ def generate_configurations():
             "4096KiB",
             "32KiB",
             "32KiB",
-            "32KiB",
         ],
-        "metadata-cache-assoc": [8, 8, 8, 32, 8, 8, 1, 8],
-        "int-trb-size": [32, 1024, 1, 32, 32, 64, 32, 32],
+        "metadata-cache-assoc": [8, 8, 8, 32, 8, 1, 8],
+        "int-trb-size": [1, 2, 1024, 1, 1, 1, 1],
     }
 
     configurations = [
