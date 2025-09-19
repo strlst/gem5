@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -79,8 +81,12 @@ def plot_data(int_trb_size, latency):
     # Tight layout, legend, and save
     sns.despine(trim=True)
     plt.tight_layout()
+    os.makedirs("plots", exist_ok=True)
+    print(f'created folder "plots"')
     plt.savefig(
-        "plots/latency_vs_int_trb_size.png", dpi=200, bbox_inches="tight"
+        os.path.join("plots", f"latency_vs_int_trb_size.png"),
+        dpi=200,
+        bbox_inches="tight",
     )
     plt.close()
 
