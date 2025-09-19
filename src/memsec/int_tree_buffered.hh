@@ -135,11 +135,15 @@ class IntTRB : public SimObject
     const uint64_t non_leaf_nodes;
     AddrRange range_integrity;
     std::list<IntTreeReq> queue;
+    std::set<Addr> dispatched_node_addresses;
 
     // identify requests
     uint64_t serial = 0;
 
     MACUnit* mac_unit;
+
+    // dispatch logic
+    void dispatch_requests();
 
     // release logic
     std::function<void()> release_callback;
@@ -206,7 +210,7 @@ class IntTRB : public SimObject
     Port& getPort(const std::string& if_name, PortID idx);
     bool handleResponse(PacketPtr pkt);
 
-    bool is_busy() {
+    bool is_full() {
         // prevent queue from filling up when set to -1
         return size >= 0 && queue.size() >= size;
     }
@@ -217,9 +221,6 @@ class IntTRB : public SimObject
     inline std::list<IntTreeReq>::iterator get_request_it(Addr node_address);
     IntTreeReq& get_request(Addr node_address);
 
-    // dispatch logic
-    void dispatch_from_queue();
-
     // state change
     void update_metadata(PacketPtr pkt);
     void release_request(Addr node_addr);
@@ -227,6 +228,7 @@ class IntTRB : public SimObject
     void dispatch_request(IntTreeReq& request);
 
     // state query
+    bool is_any_dispatched(IntTreeReq& req);
     bool contains_request_node(Addr node_address, bool read_flag);
     bool contains_request_node(Addr node_address);
 

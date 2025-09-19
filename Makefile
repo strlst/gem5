@@ -12,7 +12,7 @@ GEM5_CONFIG_SPEC:=--maxinsts 10000000
 GEM5_CONFIG_FULL:=configs/tlcpu/full.py --num-cores=1 --ooo --$(MEMSEC)
 GEM5_CONFIG_CACHE:=--l1i-size=1KiB --l1d-size=1KiB --l2-size=2KiB --no-l3
 GEM5_CONFIG_CRYPTO_SHAPE:=--crypto-counter-bits=56 --crypto-mac-bits=64 --crypto-packing-factor=8 --crypto-aes-block-bits=128
-GEM5_CONFIG_CRYPTO_PERF:=--crypto-aes-enc-cycles=80 --crypto-aes-dec-cycles=80 --crypto-aes-enc-ii=20 --crypto-aes-dec-ii=20 --crypto-mac-cycles=40 --crypto-mac-ii=10 --metadata-cache-size=1024KiB --metadata-cache-assoc=8 --int-trb-size=32
+GEM5_CONFIG_CRYPTO_PERF:=--crypto-aes-enc-cycles=80 --crypto-aes-dec-cycles=80 --crypto-aes-enc-ii=20 --crypto-aes-dec-ii=20 --crypto-mac-cycles=40 --crypto-mac-ii=10 --metadata-cache-size=1024KiB --metadata-cache-assoc=8 --int-trb-size=1
 
 # running flags
 # binary is used for bare metal tests
@@ -33,7 +33,7 @@ REMOTE_HOSTNAME:=tlml003
 REMOTE_DIR:=~/gem5
 
 run:
-	$(GEM5) $(GEM5_CONFIG) $(GEM5_CONFIG_SE) $(GEM5_CONFIG_CACHE) $(GEM5_CONFIG_CRYPTO_SHAPE) $(GEM5_CONFIG_CRYPTO_PERF) --cmd $(BINARY)
+	$(GEM5) $(GEM5_CONFIG) $(GEM5_CONFIG_SE) $(GEM5_CONFIG_CACHE) $(GEM5_CONFIG_CRYPTO_SHAPE) $(GEM5_CONFIG_CRYPTO_PERF) $(OVERRIDE) --cmd $(BINARY)
 
 spec:
 	$(GEM5) -d $(SPECOUTDIR) $(GEM5_CONFIG) $(GEM5_CONFIG_SE) $(GEM5_CONFIG_SPEC) $(GEM5_CONFIG_CACHE) $(GEM5_CONFIG_CRYPTO_SHAPE) $(GEM5_CONFIG_CRYPTO_PERF) --cmd $(SPECCMD) $(SPECOPTIONS) $(SPECSTDIN) $(SPECSTDOUT) $(SPECSTDERR)

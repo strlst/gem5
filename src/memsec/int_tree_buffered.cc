@@ -1,10 +1,9 @@
-#include "memsec/int_tree.hh"
-
 #include <cstdint>
 
 #include "base/trace.hh"
 #include "debug/IntTRB.hh"
 #include "memsec/crypto_event.hh"
+#include "memsec/int_tree.hh"
 #include "memsec/util.hh"
 
 namespace gem5
@@ -136,7 +135,7 @@ IntTRB::handleResponse(PacketPtr pkt)
 }
 
 void
-IntTRB::dispatch_from_queue()
+IntTRB::dispatch_requests()
 {
     // simple dispatch logic: just dispatch front
     // this cannot really be changed until merged node dispatches
@@ -154,11 +153,17 @@ IntTRB::dispatch_request(IntTreeReq& request)
 
     request.dispatched = true;
     for (auto& node : request.nodes) {
+        // keep track of dispatched addresses
+        dispatched_node_addresses.insert(node.address);
+
         // create and send packets for each layer
         PacketPtr packet_fetch_md = createPkt(node.address, tree_node_bytes,
             requestorId, MemCmd::ReadReq);
         mdcachePort.sendPacket(packet_fetch_md);
     }
+    DPRINTF(IntTRB,
+        "increased dispatched node address queue size to %d entries\n",
+        dispatched_node_addresses.size());
 }
 
 void
@@ -220,7 +225,7 @@ IntTRB::enqueue_request(Addr data_address, bool is_read)
     queue.emplace_back(new_request);
 
     // dispatch all dispatchable requests
-    dispatch_from_queue();
+    dispatch_requests();
 }
 
 inline std::list<IntTreeReq>::iterator
@@ -274,6 +279,17 @@ IntTRB::contains_request_node(Addr node_address, bool read_flag)
 };
 
 bool
+IntTRB::is_any_dispatched(IntTreeReq& req)
+{
+    for (auto node : req.nodes) {
+        auto it = dispatched_node_addresses.find(node.address);
+        if (it != dispatched_node_addresses.end())
+            return true;
+    }
+    return false;
+};
+
+bool
 IntTRB::contains_request_node(Addr node_address)
 {
     for (auto& request : queue) {
@@ -316,6 +332,14 @@ IntTRB::release_request(Addr node_address)
 
     // make sure to free addresses from set
     auto front = queue.front();
+    for (auto& node : front.nodes) {
+        dispatched_node_addresses.erase(node.address);
+    }
+
+    // signal size
+    DPRINTF(IntTRB,
+        "reduced dispatched node address queue to %d entries\n",
+        dispatched_node_addresses.size());
 
     panic_if(front.completed_layers < tree_height,
         "request %d was released even though it's not complete!"
@@ -334,7 +358,7 @@ IntTRB::release_request(Addr node_address)
     queue.pop_front();
 
     // dispatch all dispatchable requests
-    dispatch_from_queue();
+    dispatch_requests();
 
     // call on CPU callback
     release_callback();

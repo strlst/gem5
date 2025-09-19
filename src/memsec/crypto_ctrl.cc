@@ -259,7 +259,7 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         "integrity region!\n");
 
     // first enqueue integrity tree request in buffer
-    if (int_trb->is_full()) {
+    if (int_trb->is_busy()) {
         DPRINTF(CryptoCtrl, "IntTRB is full, refusing request\n");
         // fail on full queue
         cpu_failed_packets++;
@@ -278,6 +278,8 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
     }
 
     // queue definitely has space
+    // TODO: refactor the queue so that only one request can be launched at
+    // once, with potential for merging dispatches in the future
     int_trb->enqueue_request(pkt->getAddr(), pkt->isRead());
 
     if (pkt->isRead()) {
