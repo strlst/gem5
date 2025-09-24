@@ -95,6 +95,158 @@ CryptoCtrl::getPort(const std::string& if_name, PortID idx)
     }
 }
 
+bool
+CryptoCtrl::handleRequest(PacketPtr pkt)
+{
+    DPRINTF(CryptoCtrl, "handleRequest %s\n", formattedPacket(pkt));
+    // keep track of reads and writes
+    if (pkt->isRead())
+        stats.totalReads++;
+    else
+        stats.totalWrites++;
+
+    panic_if(range_integrity.contains(pkt->getAddr()),
+        "requests to CryptoCtrl are not allowed to fall into the reserved "
+        "integrity region!\n");
+
+    // first enqueue integrity tree request in buffer
+    if (int_trb->is_busy()) {
+        DPRINTF(CryptoCtrl, "IntTRB is full, refusing request\n");
+        // fail on full queue
+        cpu_failed_packets++;
+        return false;
+    }
+
+    // block reads for queued but as of yet unscheduled writes
+    // to prevent read requests from overtaking delayed write requests
+    if (auto it = write_queue.find(pkt->getAddr()); it != write_queue.end()) {
+        DPRINTF(CryptoCtrl,
+            "request for address 0x%x placed while there is an unresolved "
+            "on-going write request\n",
+            pkt->getAddr());
+        cpu_failed_packets++;
+        return false;
+    }
+
+    // queue definitely has space
+    // TODO: refactor the queue so that only one request can be launched at
+    // once, with potential for merging dispatches in the future
+    int_trb->enqueue_request(pkt->getAddr(), pkt->isRead());
+
+    if (pkt->isRead()) {
+        // immediately forward packet to mem port
+        // (reads don't require processing)
+        memPort.sendPacket(pkt);
+    } else {
+        /*
+        // assume multiples of 64 bytes
+        const uint64_t mask = 0xFFFFFFFFFFFFFFFF;
+        if (pkt->hasData()) {
+            DPRINTF(CryptoCtrl, "XORing write data at %d\n", pkt->getAddr());
+            uint64_t* data = pkt->getPtr<uint64_t>();
+            for (int i = 0; i < pkt->getSize() / 8; i++) {
+                *data = (*data) ^ mask;
+                data++;
+            }
+        }
+        */
+
+        // decryption
+        scheduleAESEncryptOp(pkt);
+    }
+
+    // keep track of successful operations
+    if (pkt->isRead())
+        stats.successfulReads++;
+    else
+        stats.successfulWrites++;
+
+    return true;
+}
+
+bool
+CryptoCtrl::handleResponse(PacketPtr pkt)
+{
+    DPRINTF(CryptoCtrl, "handleResponse %s\n", formattedPacket(pkt));
+
+    // NOTE: integrity side of things is decoupled
+
+    // this should not occur, but short circuit responses which should not
+    // be routed to the CPU
+    if (range_integrity.contains(pkt->getAddr())) {
+        return true;
+    }
+
+    if (pkt->isRead()) {
+        scheduleAESDecryptOp(pkt);
+        scheduleMACOp(pkt, DataMACEventType::DataMACCheck);
+    } else {
+        // directly forward the data
+        cpuPort.sendPacket(pkt);
+    }
+
+    return true;
+}
+
+void
+CryptoCtrl::handleFunctional(PacketPtr pkt)
+{
+    // just pass this on to the memory side to handle for now
+    memPort.sendFunctional(pkt);
+}
+
+AddrRangeList
+CryptoCtrl::getAddrRanges() const
+{
+    // return the mem port ranges
+    return memPort.getAddrRanges();
+}
+
+void
+CryptoCtrl::sendRangeChange()
+{
+    cpuPort.sendRangeChange();
+}
+
+void
+CryptoCtrl::scheduleAESEncryptOp(PacketPtr pkt)
+{
+    // we need to mark address as busy so that they cannot compete with
+    // concurrent read requests
+    write_queue.insert(pkt->getAddr());
+    // this would be the correct time to manipulate a packer during a write
+    // AESEncrypt(pkt);
+    // schedule future event, when the crypto unit finished encrypting
+    schedule(new CryptoWriteEvent(this, pkt),
+        aes_unit->get_earliest_enc_ready_time(pkt));
+}
+
+void
+CryptoCtrl::scheduleAESDecryptOp(PacketPtr pkt)
+{
+    // if data should be processed, now would be the time to process it
+    // AESDecrypt(pkt);
+    /*
+        // print data
+        uint8_t* byte = pkt->getPtr<uint8_t>();
+        for (int i = 0; i < pkt->getSize(); i++) {
+            printf("%.02x", *(byte++));
+        }
+        printf("\n");
+    */
+
+    //schedule(new AESDecryptEvent(this, pkt), clockEdge(delay));
+    schedule(new CryptoReadEvent(this, pkt),
+        aes_unit->get_earliest_dec_ready_time(pkt));
+}
+
+void
+CryptoCtrl::scheduleMACOp(PacketPtr pkt, DataMACEventType type)
+{
+    schedule(new DataMACEvent(this, pkt, type),
+        mac_unit->get_earliest_ready_time(pkt));
+}
+
 AddrRangeList
 CryptoCtrl::CPUSidePort::getAddrRanges() const
 {
@@ -244,73 +396,16 @@ CryptoCtrl::MemSidePort::recvRangeChange()
     owner->sendRangeChange();
 }
 
-bool
-CryptoCtrl::handleRequest(PacketPtr pkt)
+void
+CryptoCtrl::retryFailedCPUPackets()
 {
-    DPRINTF(CryptoCtrl, "handleRequest %s\n", formattedPacket(pkt));
-    // keep track of reads and writes
-    if (pkt->isRead())
-        stats.totalReads++;
-    else
-        stats.totalWrites++;
-
-    panic_if(range_integrity.contains(pkt->getAddr()),
-        "requests to CryptoCtrl are not allowed to fall into the reserved "
-        "integrity region!\n");
-
-    // first enqueue integrity tree request in buffer
-    if (int_trb->is_busy()) {
-        DPRINTF(CryptoCtrl, "IntTRB is full, refusing request\n");
-        // fail on full queue
-        cpu_failed_packets++;
-        return false;
-    }
-
-    // block reads for queued but as of yet unscheduled writes
-    // to prevent read requests from overtaking delayed write requests
-    if (auto it = write_queue.find(pkt->getAddr()); it != write_queue.end()) {
+    if (cpu_failed_packets > 0) {
         DPRINTF(CryptoCtrl,
-            "request for address 0x%x placed while there is an unresolved "
-            "on-going write request\n",
-            pkt->getAddr());
-        cpu_failed_packets++;
-        return false;
+            "retryFailedCPUPackets: %d failed packets, retrying\n",
+            cpu_failed_packets);
+        cpu_failed_packets = 0;
+        cpuPort.sendRetryReq();
     }
-
-    // queue definitely has space
-    // TODO: refactor the queue so that only one request can be launched at
-    // once, with potential for merging dispatches in the future
-    int_trb->enqueue_request(pkt->getAddr(), pkt->isRead());
-
-    if (pkt->isRead()) {
-        // immediately forward packet to mem port
-        // (reads don't require processing)
-        memPort.sendPacket(pkt);
-    } else {
-        /*
-        // assume multiples of 64 bytes
-        const uint64_t mask = 0xFFFFFFFFFFFFFFFF;
-        if (pkt->hasData()) {
-            DPRINTF(CryptoCtrl, "XORing write data at %d\n", pkt->getAddr());
-            uint64_t* data = pkt->getPtr<uint64_t>();
-            for (int i = 0; i < pkt->getSize() / 8; i++) {
-                *data = (*data) ^ mask;
-                data++;
-            }
-        }
-        */
-
-        // decryption
-        scheduleAESEncryptOp(pkt);
-    }
-
-    // keep track of successful operations
-    if (pkt->isRead())
-        stats.successfulReads++;
-    else
-        stats.successfulWrites++;
-
-    return true;
 }
 
 void
@@ -339,30 +434,6 @@ CryptoCtrl::opCryptoWriteCallback(PacketPtr pkt)
         retryFailedCPUPackets();
 }
 
-bool
-CryptoCtrl::handleResponse(PacketPtr pkt)
-{
-    DPRINTF(CryptoCtrl, "handleResponse %s\n", formattedPacket(pkt));
-
-    // NOTE: integrity side of things is decoupled
-
-    // this should not occur, but short circuit responses which should not
-    // be routed to the CPU
-    if (range_integrity.contains(pkt->getAddr())) {
-        return true;
-    }
-
-    if (pkt->isRead()) {
-        scheduleAESDecryptOp(pkt);
-        scheduleMACOp(pkt, DataMACEventType::DataMACCheck);
-    } else {
-        // directly forward the data
-        cpuPort.sendPacket(pkt);
-    }
-
-    return true;
-}
-
 void
 CryptoCtrl::opCryptoRead(PacketPtr pkt)
 {
@@ -388,77 +459,6 @@ CryptoCtrl::opDataMACUpdate(PacketPtr pkt)
     DPRINTF(CryptoCtrl, "opDataMACUpdate: completed %s\n",
         formattedPacket(pkt));
     // theoretically we would update the MAC here
-}
-
-void
-CryptoCtrl::retryFailedCPUPackets()
-{
-    if (cpu_failed_packets > 0) {
-        DPRINTF(CryptoCtrl,
-            "retryFailedCPUPackets: %d failed packets, retrying\n",
-            cpu_failed_packets);
-        cpu_failed_packets = 0;
-        cpuPort.sendRetryReq();
-    }
-}
-
-void
-CryptoCtrl::handleFunctional(PacketPtr pkt)
-{
-    // just pass this on to the memory side to handle for now
-    memPort.sendFunctional(pkt);
-}
-
-AddrRangeList
-CryptoCtrl::getAddrRanges() const
-{
-    // return the mem port ranges
-    return memPort.getAddrRanges();
-}
-
-void
-CryptoCtrl::sendRangeChange()
-{
-    cpuPort.sendRangeChange();
-}
-
-void
-CryptoCtrl::scheduleAESEncryptOp(PacketPtr pkt)
-{
-    // we need to mark address as busy so that they cannot compete with
-    // concurrent read requests
-    write_queue.insert(pkt->getAddr());
-    // this would be the correct time to manipulate a packer during a write
-    // AESEncrypt(pkt);
-    // schedule future event, when the crypto unit finished encrypting
-    schedule(new CryptoWriteEvent(this, pkt),
-        aes_unit->get_earliest_enc_ready_time(pkt));
-}
-
-void
-CryptoCtrl::scheduleAESDecryptOp(PacketPtr pkt)
-{
-    // if data should be processed, now would be the time to process it
-    // AESDecrypt(pkt);
-    /*
-        // print data
-        uint8_t* byte = pkt->getPtr<uint8_t>();
-        for (int i = 0; i < pkt->getSize(); i++) {
-            printf("%.02x", *(byte++));
-        }
-        printf("\n");
-    */
-
-    //schedule(new AESDecryptEvent(this, pkt), clockEdge(delay));
-    schedule(new CryptoReadEvent(this, pkt),
-        aes_unit->get_earliest_dec_ready_time(pkt));
-}
-
-void
-CryptoCtrl::scheduleMACOp(PacketPtr pkt, DataMACEventType type)
-{
-    schedule(new DataMACEvent(this, pkt, type),
-        mac_unit->get_earliest_ready_time(pkt));
 }
 
 } // namespace gem5

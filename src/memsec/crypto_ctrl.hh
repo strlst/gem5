@@ -40,6 +40,24 @@ struct TreeCheckRequest
  */
 class CryptoCtrl : public ClockedObject
 {
+  public:
+    /** constructor
+     */
+    CryptoCtrl(const CryptoCtrlParams& params);
+
+    /**
+     * Get a port with a given name and index. This is used at
+     * binding time and returns a reference to a protocol-agnostic
+     * port.
+     *
+     * @param if_name Port name
+     * @param idx Index in the case of a VectorPort
+     *
+     * @return A reference to the given port
+     */
+    Port&
+    getPort(const std::string& if_name, PortID idx = InvalidPortID) override;
+
   private:
     System* sys;
     RequestorID requestorId;
@@ -70,6 +88,50 @@ class CryptoCtrl : public ClockedObject
     IntTRB* int_trb;
 
     bool retryFailedCPUPacketsLater = false;
+
+    /**
+     * Handle the request from the CPU side
+     *
+     * @param pkt requesting packet
+     * @return true if we can handle the request this cycle, false if the
+     *         requestor needs to retry later
+     */
+    bool handleRequest(PacketPtr pkt);
+
+    /**
+     * Handle the respone from the memory side
+     *
+     * @param pkt responding packet
+     * @return true if we can handle the response this cycle, false if the
+     *         responder needs to retry later
+     */
+    bool handleResponse(PacketPtr pkt);
+
+    /**
+     * Handle a packet functionally. Update the data on a write and get the
+     * data on a read.
+     *
+     * @param packet to functionally handle
+     */
+    void handleFunctional(PacketPtr pkt);
+
+    /**
+     * Return the address ranges this memobj is responsible for. Just use the
+     * same as the next upper level of the hierarchy.
+     *
+     * @return the address ranges this memobj is responsible for
+     */
+    AddrRangeList getAddrRanges() const;
+
+    /**
+     * Tell the CPU side to ask for our memory ranges.
+     */
+    void sendRangeChange();
+
+    // available operations
+    void scheduleAESEncryptOp(PacketPtr pkt);
+    void scheduleAESDecryptOp(PacketPtr pkt);
+    void scheduleMACOp(PacketPtr pkt, DataMACEventType type);
 
     struct PktStats : public Group
     {
@@ -203,60 +265,13 @@ class CryptoCtrl : public ClockedObject
         void recvRangeChange() override;
     };
 
-    /**
-     * Handle the request from the CPU side
-     *
-     * @param pkt requesting packet
-     * @return true if we can handle the request this cycle, false if the
-     *         requestor needs to retry later
-     */
-    bool handleRequest(PacketPtr pkt);
-
-    /**
-     * Handle the respone from the memory side
-     *
-     * @param pkt responding packet
-     * @return true if we can handle the response this cycle, false if the
-     *         responder needs to retry later
-     */
-    bool handleResponse(PacketPtr pkt);
-
-    /**
-     * Handle a packet functionally. Update the data on a write and get the
-     * data on a read.
-     *
-     * @param packet to functionally handle
-     */
-    void handleFunctional(PacketPtr pkt);
-
-    /**
-     * Return the address ranges this memobj is responsible for. Just use the
-     * same as the next upper level of the hierarchy.
-     *
-     * @return the address ranges this memobj is responsible for
-     */
-    AddrRangeList getAddrRanges() const;
-
-    /**
-     * Tell the CPU side to ask for our memory ranges.
-     */
-    void sendRangeChange();
-
     // instantiation of the CPU-side ports
     CPUSidePort cpuPort;
 
     // instantiation of the memory-side port
     MemSidePort memPort;
 
-    // available operations
-    void scheduleAESEncryptOp(PacketPtr pkt);
-    void scheduleAESDecryptOp(PacketPtr pkt);
-    void scheduleMACOp(PacketPtr pkt, DataMACEventType type);
-
   public:
-    /** constructor
-     */
-    CryptoCtrl(const CryptoCtrlParams& params);
 
     /**
      * Create a Packet from given parameters.
@@ -267,19 +282,6 @@ class CryptoCtrl : public ClockedObject
      * Create a Packet copy with a different command.
      */
     PacketPtr createPktFromPkt(PacketPtr pkt, MemCmd cmd);
-
-    /**
-     * Get a port with a given name and index. This is used at
-     * binding time and returns a reference to a protocol-agnostic
-     * port.
-     *
-     * @param if_name Port name
-     * @param idx Index in the case of a VectorPort
-     *
-     * @return A reference to the given port
-     */
-    Port&
-    getPort(const std::string& if_name, PortID idx = InvalidPortID) override;
 
     /**
      * If there are failed packets from the CPU side (due to full buffers),
