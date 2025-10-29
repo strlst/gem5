@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "base/trace.hh"
+#include "debug/CryptoCtrl.hh"
 #include "debug/IntTRB.hh"
 #include "memsec/crypto_event.hh"
 #include "memsec/util.hh"

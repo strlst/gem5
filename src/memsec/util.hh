@@ -4,6 +4,7 @@
 #include <string>
 
 #include "mem/packet.hh"
+#include "mem/request.hh"
 
 namespace gem5
 {

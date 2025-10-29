@@ -30,7 +30,7 @@ def add_common_args(parser):
         type=int,
         default=None,
         help="""Total number of instructions to
-                                            simulate (default: run forever)""",
+        simulate (default: run forever)""",
     )
 
 

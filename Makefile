@@ -8,7 +8,7 @@ GEM5_CONFIG:=configs/tlcpu/simple/simple.py --num-cores=1 --ooo --$(MEMSEC)
 # this is only needed for dynamically linked executables requiring an
 # interpreter
 GEM5_CONFIG_SE:=--interp-dir benchmark/sysroot --redirects /lib=benchmark/sysroot/lib --redirects /lib64=benchmark/sysroot/lib64 --redirects /usr/lib=benchmark/sysroot/usr/lib --redirects /usr/lib64=benchmark/sysroot/usr/lib64
-GEM5_CONFIG_SPEC:=--maxinsts 10000000
+GEM5_CONFIG_SPEC:=--maxinsts 1000000
 GEM5_CONFIG_FULL:=configs/tlcpu/full.py --num-cores=1 --ooo --$(MEMSEC)
 GEM5_CONFIG_CACHE:=--l1i-size=1KiB --l1d-size=1KiB --l2-size=2KiB --no-l3
 GEM5_CONFIG_CRYPTO_SHAPE:=--crypto-counter-bits=56 --crypto-mac-bits=64 --crypto-packing-factor=8 --crypto-aes-block-bits=128

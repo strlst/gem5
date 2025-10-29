@@ -28,8 +28,12 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
       range_total(params.range_total), range_data(params.range_data),
       range_integrity(params.range_integrity),
       range_leaves(params.range_leaves), aes_unit(params.aes_unit),
-      mac_unit(params.mac_unit), int_trb(params.int_trb), stats(this),
-      cpuPort(params.name + ".cpu_side_port", this),
+      mac_unit(params.mac_unit), int_trb(params.int_trb),
+      tickEvent(
+          [this] {
+              tick();
+          }, name()),
+      stats(this), cpuPort(params.name + ".cpu_side_port", this),
       memPort(params.name + ".mem_side_port", this)
 {
     DPRINTF(CryptoCtrl, "Created crypto controller with properties\n");
@@ -93,6 +97,29 @@ CryptoCtrl::getPort(const std::string& if_name, PortID idx)
         // pass it along to our super class
         return SimObject::getPort(if_name, idx);
     }
+}
+
+void
+CryptoCtrl::startup()
+{
+    // kick off the clock ticks
+    // NOTE: don't use tick event, it costs too much performance
+    //schedule(tickEvent, clockEdge());
+}
+
+void
+CryptoCtrl::tick()
+{
+    // NOTE: this method is not used currently, but left in here for anyone
+    //       who might want to implement a feature using cycle-level events
+    /*
+    schedule(tickEvent, clockEdge(Cycles(1)));
+    if (cpu_failed_packets > 0 && !int_trb->is_busy()) {
+        DPRINTF(CryptoCtrl, "sending cpu retry request\n");
+        cpuPort.sendRetryReq();
+        cpu_failed_packets--;
+    }
+    */
 }
 
 bool
@@ -269,6 +296,12 @@ CryptoCtrl::CPUSidePort::sendPacket(PacketPtr pkt)
     return success;
 }
 
+bool
+CryptoCtrl::CPUSidePort::hasFailedPackets()
+{
+    return failedPackets.size() > 0;
+}
+
 void
 CryptoCtrl::CPUSidePort::recvFunctional(PacketPtr pkt)
 {
@@ -281,6 +314,10 @@ CryptoCtrl::CPUSidePort::recvTimingReq(PacketPtr pkt)
 {
     DPRINTF(CryptoCtrl, "recvTimingReq %s\n", formattedPacket(pkt));
     owner->stats.cpuTotalCountRecv++;
+
+    // TODO: log sequence here?
+
+    // just forward
     return owner->handleRequest(pkt);
 }
 
@@ -297,14 +334,14 @@ CryptoCtrl::CPUSidePort::recvRespRetry()
 
         // try to send packet
         success = sendTimingResp(pkt);
-        DPRINTF(CryptoCtrl, "recvReqRetry %s, success=%d\n",
+        DPRINTF(CryptoCtrl, "recvRespRetry %s, success=%d\n",
             formattedPacket(pkt), success);
 
         // remove packets which were successfully resent
         if (success)
             failedPackets.pop();
     }
-    DPRINTF(CryptoCtrl, "recvReqRetry %d failed packets in queue\n",
+    DPRINTF(CryptoCtrl, "recvRespRetry %d failed packets in queue\n",
         failedPackets.size());
 }
 
@@ -352,13 +389,11 @@ CryptoCtrl::MemSidePort::recvTimingResp(PacketPtr pkt)
 void
 CryptoCtrl::MemSidePort::recvReqRetry()
 {
-    // we need to track this because of a curious failure case involving
-    // cpu side retries
-    currentlyRetrying = true;
-
     // use for loop to only process packets currently in queue,
     // ignorning newly added failed packets
     bool success = true;
+    // since processPacket has side-effects, we don't want to delay processing
+    std::queue<PacketPtr> successful_packets;
     while (success && !failedPackets.empty()) {
         owner->stats.memRetryCountSend++;
         // grab next packet
@@ -369,25 +404,21 @@ CryptoCtrl::MemSidePort::recvReqRetry()
         success = sendTimingReq(pkt);
         DPRINTF(CryptoCtrl, "recvReqRetry: %s, success=%d\n",
             formattedPacket(pkt), success);
-        DPRINTF(CryptoCtrl, "abc1 success=%d nonempty=%d\n", success,
-            !failedPackets.empty());
 
         if (success) {
             // on success, delete packet
             failedPackets.pop();
-            processPacket(pkt);
+            successful_packets.emplace(pkt);
         }
-
-        DPRINTF(CryptoCtrl, "abc2 success=%d nonempty=%d\n", success,
-            !failedPackets.empty());
     }
 
-    currentlyRetrying = false;
     DPRINTF(CryptoCtrl, "recvReqRetry: %d failed packets in queue\n",
         failedPackets.size());
 
-    if (owner->retryFailedCPUPacketsLater)
-        owner->retryFailedCPUPackets();
+    while (successful_packets.size() > 0) {
+        processPacket(successful_packets.front());
+        successful_packets.pop();
+    }
 }
 
 void
@@ -403,7 +434,7 @@ CryptoCtrl::retryFailedCPUPackets()
         DPRINTF(CryptoCtrl,
             "retryFailedCPUPackets: %d failed packets, retrying\n",
             cpu_failed_packets);
-        cpu_failed_packets = 0;
+        cpu_failed_packets--;
         cpuPort.sendRetryReq();
     }
 }
@@ -426,12 +457,7 @@ CryptoCtrl::opCryptoWriteCallback(PacketPtr pkt)
         "opCryptoWriteCallback: reduced write queue to %d entries\n",
         write_queue.size());
 
-    // NOTE: retrying CPU packets while mem side packets are currently
-    // draining can lead to insidious bugs so it is best avoided
-    if (memPort.currentlyRetrying)
-        retryFailedCPUPacketsLater = true;
-    else
-        retryFailedCPUPackets();
+    retryFailedCPUPackets();
 }
 
 void
@@ -448,16 +474,14 @@ CryptoCtrl::opCryptoRead(PacketPtr pkt)
 void
 CryptoCtrl::opDataMACCheck(PacketPtr pkt)
 {
-    DPRINTF(CryptoCtrl, "opDataMACCheck: completed %s\n",
-        formattedPacket(pkt));
+    DPRINTF(CryptoCtrl, "opDataMACCheck: completed\n");
     // theoretically we would check the MAC here
 }
 
 void
 CryptoCtrl::opDataMACUpdate(PacketPtr pkt)
 {
-    DPRINTF(CryptoCtrl, "opDataMACUpdate: completed %s\n",
-        formattedPacket(pkt));
+    DPRINTF(CryptoCtrl, "opDataMACUpdate: completed\n");
     // theoretically we would update the MAC here
 }
 

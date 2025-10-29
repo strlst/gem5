@@ -87,10 +87,20 @@ class CryptoCtrl : public ClockedObject
     std::set<Addr> write_queue;
     IntTRB* int_trb;
 
-    bool retryFailedCPUPacketsLater = false;
+    void startup() override;
 
     /**
-     * Handle the request from the CPU side
+     * Progress the controller one clock cycle.
+     */
+    void tick();
+
+    /**
+     * Event to schedule clock ticks.
+     */
+    EventFunctionWrapper tickEvent;
+
+    /**
+     * Handle the request from the CPU side.
      *
      * @param pkt requesting packet
      * @return true if we can handle the request this cycle, false if the
@@ -99,7 +109,7 @@ class CryptoCtrl : public ClockedObject
     bool handleRequest(PacketPtr pkt);
 
     /**
-     * Handle the respone from the memory side
+     * Handle the respone from the memory side.
      *
      * @param pkt responding packet
      * @return true if we can handle the response this cycle, false if the
@@ -218,6 +228,7 @@ class CryptoCtrl : public ClockedObject
 
         // called by the crypto controller
         bool sendPacket(PacketPtr pkt);
+        bool hasFailedPackets();
         AddrRangeList getAddrRanges() const override;
       protected:
         Tick recvAtomic(PacketPtr pkt) override
