@@ -3,13 +3,13 @@ GEM5:=build/RISCV/gem5.opt
 # set MEMSEC:=no-memsec for no memory security
 MEMSEC:=memsec
 GEM5_PIPEVIEW:=--debug-flags=O3PipeView --debug-start=0 --debug-file=trace.out
-GEM5_CONFIG:=configs/tlcpu/simple/simple.py --num-cores=1 --ooo --$(MEMSEC)
+GEM5_CONFIG:=configs/memsec/simple/simple.py --num-cores=1 --ooo --$(MEMSEC)
 # sysroot is a simple riscv64 linux kernel build generated using buildroot,
 # this is only needed for dynamically linked executables requiring an
 # interpreter
 GEM5_CONFIG_SE:=--interp-dir benchmark/sysroot --redirects /lib=benchmark/sysroot/lib --redirects /lib64=benchmark/sysroot/lib64 --redirects /usr/lib=benchmark/sysroot/usr/lib --redirects /usr/lib64=benchmark/sysroot/usr/lib64
 GEM5_CONFIG_SPEC:=--maxinsts 1000000
-GEM5_CONFIG_FULL:=configs/tlcpu/full.py --num-cores=1 --ooo --$(MEMSEC)
+GEM5_CONFIG_FULL:=configs/memsec/full.py --num-cores=1 --ooo --$(MEMSEC)
 GEM5_CONFIG_CACHE:=--l1i-size=1KiB --l1d-size=1KiB --l2-size=2KiB --no-l3
 GEM5_CONFIG_CRYPTO_SHAPE:=--crypto-counter-bits=56 --crypto-mac-bits=64 --crypto-packing-factor=8 --crypto-aes-block-bits=128
 GEM5_CONFIG_CRYPTO_PERF:=--crypto-aes-enc-cycles=80 --crypto-aes-dec-cycles=80 --crypto-aes-enc-ii=20 --crypto-aes-dec-ii=20 --crypto-mac-cycles=40 --crypto-mac-ii=10 --metadata-cache-size=1024KiB --metadata-cache-assoc=8 --int-trb-size=1
@@ -22,7 +22,7 @@ DEBUG_FLAGS:=CryptoCtrl,IntTRB,Vma,SyscallVerbose,DRAMsim3,Cache#,O3CPUAll
 # tracediff flags
 GEM5_TRACEDIFF=util/tracediff
 GEM5_TRACEDIFF_DEBUG:=--debug-flags=Exec
-GEM5_TRACEDIFF_CONFIG:=configs/tlcpu/simple/simple.py --num-cores=1 --no-ooo '--memsec|--no-memsec'
+GEM5_TRACEDIFF_CONFIG:=configs/memsec/simple/simple.py --num-cores=1 --no-ooo '--memsec|--no-memsec'
 
 # pipeview
 PIPEVIEW:=util/o3-pipeview.py
@@ -80,6 +80,10 @@ remote-debug:
 remote-build:
 	rsync -av --exclude=build,m5out --delete . $(REMOTE_HOSTNAME):$(REMOTE_DIR)/
 	ssh $(REMOTE_HOSTNAME) "cd $(REMOTE_DIR); make build"
+
+benchmark: tidy
+	python3 benchmark/gen_run_script.py
+	run-spec-benchmarks.sh
 
 summary:
 	python3 benchmark/gen_summary.py

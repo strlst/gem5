@@ -8,7 +8,8 @@ import shutil
 import sys
 
 spec_commands = "benchmark/spec-commands.json"
-spec_selected = ["519.lbm_r", "538.imagick_r", "505.mcf_r", "557.xz_r"]
+# spec_selected = ["519.lbm_r", "538.imagick_r", "505.mcf_r", "557.xz_r"]
+spec_selected = ["519.lbm_r", "538.imagick_r", "505.mcf_r"]
 
 
 def generate_configurations():
@@ -16,12 +17,12 @@ def generate_configurations():
     # each configuration might as well be hardcoded directly, but this way
     # saves spelling each parameter for each configuration
     crypto_params = {
-        "crypto-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 0],
-        "crypto-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 0],
-        "crypto-aes-enc-ii": [20, 20, 20, 20, 20, 20, 0],
-        "crypto-aes-dec-ii": [20, 20, 20, 20, 20, 20, 0],
-        "crypto-mac-cycles": [40, 40, 40, 40, 40, 40, 0],
-        "crypto-mac-ii": [10, 10, 10, 10, 10, 10, 0],
+        "crypto-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 1],
+        "crypto-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 1],
+        "crypto-aes-enc-ii": [20, 20, 20, 20, 20, 20, 1],
+        "crypto-aes-dec-ii": [20, 20, 20, 20, 20, 20, 1],
+        "crypto-mac-cycles": [40, 40, 40, 40, 40, 40, 1],
+        "crypto-mac-ii": [10, 10, 10, 10, 10, 10, 1],
         "metadata-cache-size": [
             "32KiB",
             "32KiB",
@@ -32,7 +33,7 @@ def generate_configurations():
             "32KiB",
         ],
         "metadata-cache-assoc": [8, 8, 8, 32, 8, 1, 8],
-        "int-trb-size": [1, 2, 1024, 1, 1, 1, 1],
+        "int-trb-size": [1, 2, 128, 1, 1, 1, 1],
     }
 
     configurations = [
@@ -150,7 +151,9 @@ def main(args):
                 "result",
                 f"{bench}_{run_id}_{suffix}_no_memsec",
             )
-            final_cmd = f"mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=no-memsec 2>&1 > {outdir}/log &"
+            # final_cmd = f"mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=no-memsec 2>&1 > {outdir}/log &"
+            # only parallelize up to level of same bench
+            final_cmd = f"mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=no-memsec 2>&1 > {outdir}/log"
             out_file.write(f"{final_cmd}\n")
         mode = os.stat(args.out_path).st_mode
         mode |= (mode & 0o444) >> 2
