@@ -125,7 +125,7 @@ def analyze(statistics, target, fname, fields, splitfunc):
             )
 
 
-def summarize_statistics(statistics):
+def summarize_statistics(statistics, multi_plot=False):
     # process extracted statistics
     data = {"by-dramsim3": dict(), "by-gem5": dict()}
     descriptions = dict()
@@ -161,10 +161,12 @@ def summarize_statistics(statistics):
 
     df_gem5 = prepare_df(pd.DataFrame(data["by-gem5"]))
     for stat in gem5_fields:
-        plot_stat(df_gem5, stat, descriptions[stat], "gem5")
+        plot_stat(df_gem5, stat, descriptions[stat], "gem5", multi_plot)
     df_dramsim3 = prepare_df(pd.DataFrame(data["by-dramsim3"]["channel0"]))
     for stat in dramsim3_fields:
-        plot_stat(df_dramsim3, stat, descriptions[stat], "dramsim3")
+        plot_stat(
+            df_dramsim3, stat, descriptions[stat], "dramsim3", multi_plot
+        )
 
 
 def bin_schedule(hits, fname):
@@ -179,14 +181,30 @@ def bin_schedule(hits, fname):
 
 def analyze_imbalance(overhead):
     # NOTE: imbalance is defined as min(k, l)/max(k, l) over the access counts of any two regions of memory
+    print(overhead)
+    data = dict()
     for benchmark in sorted(overhead):
+        # prepare dict for plotting later
+        experiment = str_before_n_th_index(benchmark.lstrip("result/"), "_", 3)
+        arch = str_after_n_th_index(benchmark, "_", 5)
+        if experiment not in data:
+            data[experiment] = dict()
+
+        # get access counts and calculate imbalance
         hits = overhead[benchmark]
         keys = list(hits.keys())
         for i, k in enumerate(keys):
             for l in keys[i + 1 :]:
-                print(
-                    f"{benchmark}: imbalance({k}, {l}) = {min(hits[k], hits[l])} / {max(hits[k], hits[l])} = {round(min(hits[k], hits[l]) * 100 / max(hits[k], hits[l]), 2)}%"
+                imbalance = round(
+                    min(hits[k], hits[l]) * 100 / max(hits[k], hits[l]), 2
                 )
+                print(
+                    f"{benchmark}: imbalance({k}, {l}) = {min(hits[k], hits[l])} / {max(hits[k], hits[l])} = {imbalance}%"
+                )
+                data[experiment][arch] = imbalance
+
+    # finally plot and save data
+    plot_imbalance(data)
 
 
 def str_after_n_th_index(string, char, n):
@@ -212,9 +230,54 @@ def prepare_df(df):
     return df
 
 
-def plot_stat(df, stat, title, simulator):
+def plot_imbalance(data):
     sns.set(style="whitegrid")
-    fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(24, 20), sharex=True)
+    plt.figure(figsize=(16, 12))
+    plt.rcParams.update(
+        {
+            "text.usetex": True,
+            "font.family": "sans-serif",
+            "font.size": "26",
+        }
+    )
+
+    df = (
+        pd.DataFrame.from_dict(data, orient="index")
+        .reset_index()
+        .rename(columns={"index": "benchmark"})
+        .melt(
+            id_vars="benchmark", var_name="configuration", value_name="value"
+        )
+    )
+    df["benchmark"] = pd.Categorical(
+        df["benchmark"], categories=list(data.keys()), ordered=True
+    )
+
+    sns.lineplot(
+        data=df,
+        x="benchmark",
+        y="value",
+        hue="configuration",
+        marker="o",
+        linewidth=2.5,
+    )
+    # plt.ylim(0, 100)
+    plt.xticks(rotation=30, ha="right")
+    plt.xlabel("Benchmark")
+    plt.ylabel("Integrity Tree Memory Traffic Overhead [\\%]")
+    plt.title("Overhead of different configurations across benchmarks")
+    plt.legend(
+        title="Configuration", bbox_to_anchor=(1.05, 1), loc="upper left"
+    )
+    plt.tight_layout()
+
+    filename = os.path.join("plots", f"dramsim3-schedule-imbalance.png")
+    plt.savefig(filename, dpi=300, bbox_inches="tight")
+    print(f"saved imbalance figure to file {filename}")
+
+
+def plot_stat(df, stat, title, simulator, multi_plot=False):
+    sns.set(style="whitegrid")
     plt.rcParams.update(
         {
             "text.usetex": True,
@@ -223,16 +286,26 @@ def plot_stat(df, stat, title, simulator):
         }
     )
     plt.xticks(rotation=90)
-    for i, data in enumerate([df, df[df["mode"] != "no_memsec"]]):
-        ax = sns.barplot(
-            x="benchmark", y=stat, data=data, hue="mode", ax=axes[i]
+    # for i, data in enumerate([df, df[df["mode"] != "no_memsec"]]):
+    if multi_plot:
+        fig, axes = plt.subplots(
+            nrows=2, ncols=1, figsize=(16, 12), sharex=True
         )
+        for i, data in enumerate([df, df[df["mode"] != "no_memsec"]]):
+            ax = sns.barplot(
+                x="benchmark", y=stat, data=data, hue="mode", ax=axes[i]
+            )
+            ax.legend(loc="upper right", bbox_to_anchor=(1.0, 1.0))
+            ax.set_title(title)
+    else:
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(16, 12), sharex=True)
+        ax = sns.barplot(x="benchmark", y=stat, data=df, hue="mode", ax=ax)
         ax.legend(loc="upper right", bbox_to_anchor=(1.0, 1.0))
         ax.set_title(title)
     plt.tight_layout()
 
     filename = os.path.join("plots", f"{simulator}-{stat}.png")
-    fig.savefig(filename)
+    fig.savefig(filename, dpi=300, bbox_inches="tight")
     print(f"saved figure {simulator}-{stat} to file {filename}")
 
     plt.close(fig)
@@ -240,7 +313,7 @@ def plot_stat(df, stat, title, simulator):
 
 def main(args):
     statistics = dict()
-    overhead = {}
+    overhead = dict()
     for root, dirs, files in os.walk("result"):
         if (
             "dramsim3.txt" not in files
@@ -278,7 +351,7 @@ def main(args):
         save(args, statistics)
 
     if not args.skip_statistics:
-        summarize_statistics(statistics)
+        summarize_statistics(statistics, args.multi_plot)
 
     if not args.skip_imbalance:
         analyze_imbalance(overhead)
@@ -290,6 +363,11 @@ if __name__ == "__main__":
         "-o",
         "--out-path",
         help="Output file path to write resulting shell script to",
+    )
+    parser.add_argument(
+        "-m",
+        "--multi-plot",
+        help="Generate two plots, including and excluding base architecture for easier comparison",
     )
     parser.add_argument(
         "-s",
