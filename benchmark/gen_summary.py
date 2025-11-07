@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
+aim_overhead_binmask = 0xFFFFE0000000
+
 dramsim3_fields = {
     "num_cycles",
     "num_reads_done",
@@ -123,6 +125,70 @@ def analyze(statistics, target, fname, fields, splitfunc):
             )
 
 
+def summarize_statistics(statistics):
+    # process extracted statistics
+    data = {"by-dramsim3": dict(), "by-gem5": dict()}
+    descriptions = dict()
+    for benchmark in statistics:
+        experiment = benchmark.lstrip("result/")
+        for channel in statistics[benchmark]["dramsim3"]:
+            if channel not in data["by-dramsim3"]:
+                data["by-dramsim3"][channel] = dict()
+            for stat in statistics[benchmark]["dramsim3"][channel]:
+                if stat not in data["by-dramsim3"][channel]:
+                    data["by-dramsim3"][channel][stat] = dict()
+                value = statistics[benchmark]["dramsim3"][channel][stat][0]
+                data["by-dramsim3"][channel][stat][experiment] = (
+                    float(value) if "." in value else int(value)
+                )
+                if stat not in descriptions:
+                    descriptions[stat] = statistics[benchmark]["dramsim3"][
+                        channel
+                    ][stat][1]
+        for stat in statistics[benchmark]["gem5"]:
+            if stat not in data["by-gem5"]:
+                data["by-gem5"][stat] = dict()
+            value = statistics[benchmark]["gem5"][stat][0]
+            data["by-gem5"][stat][experiment] = (
+                float(value) if "." in value else int(value)
+            )
+            if stat not in descriptions:
+                descriptions[stat] = statistics[benchmark]["gem5"][stat][1]
+
+    # create output dir
+    os.makedirs("plots", exist_ok=True)
+    print(f'created folder "plots"')
+
+    df_gem5 = prepare_df(pd.DataFrame(data["by-gem5"]))
+    for stat in gem5_fields:
+        plot_stat(df_gem5, stat, descriptions[stat], "gem5")
+    df_dramsim3 = prepare_df(pd.DataFrame(data["by-dramsim3"]["channel0"]))
+    for stat in dramsim3_fields:
+        plot_stat(df_dramsim3, stat, descriptions[stat], "dramsim3")
+
+
+def bin_schedule(hits, fname):
+    with open(fname) as overhead_file:
+        # skip CSV header
+        overhead_file.readline()
+        for line in map(str.strip, overhead_file):
+            # NOTE: hex addresses are at column 3, currently hardcoded
+            binned = hex(int(line.split(";")[3], 16) & aim_overhead_binmask)
+            hits[binned] = hits.get(binned, 0) + 1
+
+
+def analyze_imbalance(overhead):
+    # NOTE: imbalance is defined as min(k, l)/max(k, l) over the access counts of any two regions of memory
+    for benchmark in sorted(overhead):
+        hits = overhead[benchmark]
+        keys = list(hits.keys())
+        for i, k in enumerate(keys):
+            for l in keys[i + 1 :]:
+                print(
+                    f"{benchmark}: imbalance({k}, {l}) = {min(hits[k], hits[l])} / {max(hits[k], hits[l])} = {round(min(hits[k], hits[l]) * 100 / max(hits[k], hits[l]), 2)}%"
+                )
+
+
 def str_after_n_th_index(string, char, n):
     i = -1
     for _ in range(n):
@@ -174,69 +240,48 @@ def plot_stat(df, stat, title, simulator):
 
 def main(args):
     statistics = dict()
+    overhead = {}
     for root, dirs, files in os.walk("result"):
-        if "dramsim3.txt" not in files or "stats.txt" not in files:
+        if (
+            "dramsim3.txt" not in files
+            or "stats.txt" not in files
+            or "dramsim3.schedule.txt" not in files
+        ):
             print(f"skipping analysis of {root}")
             continue
         # print(root, dirs, files)
         statistics[root] = dict()
-        analyze(
-            statistics[root],
-            "dramsim3",
-            os.path.join(root, "dramsim3.txt"),
-            dramsim3_fields,
-            dramsim3_split,
-        )
-        analyze(
-            statistics[root],
-            "gem5",
-            os.path.join(root, "stats.txt"),
-            gem5_fields,
-            gem5_split,
-        )
+        overhead[root] = dict()
+        if not args.skip_statistics and "dramsim3.txt" in files:
+            analyze(
+                statistics[root],
+                "dramsim3",
+                os.path.join(root, "dramsim3.txt"),
+                dramsim3_fields,
+                dramsim3_split,
+            )
+        if not args.skip_statistics and "stats.txt" in files:
+            analyze(
+                statistics[root],
+                "gem5",
+                os.path.join(root, "stats.txt"),
+                gem5_fields,
+                gem5_split,
+            )
+        if not args.skip_imbalance and "dramsim3.schedule.txt" in files:
+            bin_schedule(
+                overhead[root],
+                os.path.join(root, "dramsim3.schedule.txt"),
+            )
 
     if args.out_path:
         save(args, statistics)
 
-    # process extracted statistics
-    data = {"by-dramsim3": dict(), "by-gem5": dict()}
-    descriptions = dict()
-    for benchmark in statistics:
-        experiment = benchmark.lstrip("result/")
-        for channel in statistics[benchmark]["dramsim3"]:
-            if channel not in data["by-dramsim3"]:
-                data["by-dramsim3"][channel] = dict()
-            for stat in statistics[benchmark]["dramsim3"][channel]:
-                if stat not in data["by-dramsim3"][channel]:
-                    data["by-dramsim3"][channel][stat] = dict()
-                value = statistics[benchmark]["dramsim3"][channel][stat][0]
-                data["by-dramsim3"][channel][stat][experiment] = (
-                    float(value) if "." in value else int(value)
-                )
-                if stat not in descriptions:
-                    descriptions[stat] = statistics[benchmark]["dramsim3"][
-                        channel
-                    ][stat][1]
-        for stat in statistics[benchmark]["gem5"]:
-            if stat not in data["by-gem5"]:
-                data["by-gem5"][stat] = dict()
-            value = statistics[benchmark]["gem5"][stat][0]
-            data["by-gem5"][stat][experiment] = (
-                float(value) if "." in value else int(value)
-            )
-            if stat not in descriptions:
-                descriptions[stat] = statistics[benchmark]["gem5"][stat][1]
+    if not args.skip_statistics:
+        summarize_statistics(statistics)
 
-    # create output dir
-    os.makedirs("plots", exist_ok=True)
-    print(f'created folder "plots"')
-
-    df_gem5 = prepare_df(pd.DataFrame(data["by-gem5"]))
-    for stat in gem5_fields:
-        plot_stat(df_gem5, stat, descriptions[stat], "gem5")
-    df_dramsim3 = prepare_df(pd.DataFrame(data["by-dramsim3"]["channel0"]))
-    for stat in dramsim3_fields:
-        plot_stat(df_dramsim3, stat, descriptions[stat], "dramsim3")
+    if not args.skip_imbalance:
+        analyze_imbalance(overhead)
 
 
 if __name__ == "__main__":
@@ -245,6 +290,18 @@ if __name__ == "__main__":
         "-o",
         "--out-path",
         help="Output file path to write resulting shell script to",
+    )
+    parser.add_argument(
+        "-s",
+        "--skip-statistics",
+        action=argparse.BooleanOptionalAction,
+        help="Only summarize statistics from dramsim3 and gem5",
+    )
+    parser.add_argument(
+        "-i",
+        "--skip-imbalance",
+        action=argparse.BooleanOptionalAction,
+        help="Run only imbalance analysis on dramsim3 schedule files",
     )
     parser.add_argument(
         "-d",
