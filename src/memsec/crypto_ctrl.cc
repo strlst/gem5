@@ -65,7 +65,7 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
         std::log2(range_leaves.end() - range_leaves.start()));
 
     int_trb->register_release_callback(
-        std::bind(&CryptoCtrl::retryFailedCPUPackets, this));
+        std::bind(&CryptoCtrl::onIntTRBCompletedRequest, this));
     DPRINTF(CryptoCtrl, "Registered release callback for IntTRB unit\n");
 
     // sanity check
@@ -428,11 +428,11 @@ CryptoCtrl::MemSidePort::recvRangeChange()
 }
 
 void
-CryptoCtrl::retryFailedCPUPackets()
+CryptoCtrl::onIntTRBCompletedRequest()
 {
     if (cpu_failed_packets > 0) {
         DPRINTF(CryptoCtrl,
-            "retryFailedCPUPackets: %d failed packets, retrying\n",
+            "onIntTRBCompletedRequest: %d failed packets, retrying\n",
             cpu_failed_packets);
         cpu_failed_packets--;
         cpuPort.sendRetryReq();
@@ -457,7 +457,7 @@ CryptoCtrl::opCryptoWriteCallback(PacketPtr pkt)
         "opCryptoWriteCallback: reduced write queue to %d entries\n",
         write_queue.size());
 
-    retryFailedCPUPackets();
+    onIntTRBCompletedRequest();
 }
 
 void

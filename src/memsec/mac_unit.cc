@@ -7,8 +7,9 @@ namespace gem5
 {
 
 MACUnit::MACUnit(const MACUnitParams& params)
-    : SimObject(params), mac_ready(0), mac_bytes(params.mac_bits / 8),
-      mac_cycles(params.mac_cycles), mac_ii(params.mac_ii)
+    : SimObject(params), mac_ready(0), mac_bits(params.mac_bits),
+      mac_bytes(params.mac_bits / 8), mac_cycles(params.mac_cycles),
+      mac_ii(params.mac_ii)
 {
     DPRINTF(MACUnit, "\t\t\t%d mac bits (%d bytes)\n", mac_bits, mac_bytes);
     DPRINTF(MACUnit, "\t\t\t%d mac cycles (%d ii)\n", mac_cycles, mac_ii);

@@ -70,18 +70,16 @@ class MemorySystem:
         # total size t [bits] >= 128pl + ns
         #            t [bits] >= 128p^(h+1) + s(p^(h+1) - 1)/(p - 1)
         # => h = floor(log_p((t(p - 1) + s) / (128(p - 1) + s))) - 1
-        tree_height = (
-            math.floor(
-                math.log(
-                    (total_memory_bytes * (p - 1) + tree_node_bytes)
-                    / (
-                        (args.crypto_aes_block_bits // 8) * (p - 1)
-                        + tree_node_bytes
-                    )
+        tree_height = math.floor(
+            math.log(
+                (total_memory_bytes * (p - 1) + tree_node_bytes)
+                / (
+                    (args.crypto_aes_block_bits // 8) * (p**2)
+                    + p * (tree_node_bytes - args.crypto_dmac_bits // 8)
+                    - args.crypto_dmac_bits // 8
                 )
-                / math.log(p)
             )
-            - 1
+            / math.log(p)
         )
 
         # calculate node counts
@@ -135,16 +133,19 @@ class MemorySystem:
         mac_unit = system.crypto_ctrl.mac_unit
         mac_unit.mac_cycles = args.crypto_mac_cycles
         mac_unit.mac_ii = args.crypto_mac_ii
-        mac_unit.mac_bits = args.crypto_mac_bits
+        mac_unit.mac_bits = args.crypto_dmac_bits
 
         int_trb = system.crypto_ctrl.int_trb
         int_trb.size = args.int_trb_size
         int_trb.bus_bytes = bus_bytes
         int_trb.packing_factor = args.crypto_packing_factor
-        int_trb.counter_bytes = args.crypto_counter_bits // 8
+        int_trb.counter_bits = args.crypto_counter_bits
         int_trb.tree_height = tree_height
         int_trb.tree_node_bytes = tree_node_bytes
         int_trb.range_integrity = system.crypto_ctrl.range_integrity
+        int_trb.mac_unit.mac_cycles = args.crypto_mac_cycles
+        int_trb.mac_unit.mac_ii = args.crypto_mac_ii
+        int_trb.mac_unit.mac_bits = args.crypto_mac_bits
 
         # configure metadata cache
         if args.metadata_cache_assoc:

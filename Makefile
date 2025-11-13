@@ -17,7 +17,7 @@ GEM5_CONFIG_CRYPTO_PERF:=--crypto-aes-enc-cycles=80 --crypto-aes-dec-cycles=80 -
 # running flags
 # binary is used for bare metal tests
 BINARY:=tests/test-progs/matmul/bin/riscv/linux/matmul
-DEBUG_FLAGS:=CryptoCtrl,IntTRB,Vma,SyscallVerbose,DRAMsim3,Cache#,O3CPUAll
+DEBUG_FLAGS:=CryptoCtrl,IntTRB,MACUnit,AESUnit,Vma,SyscallVerbose,DRAMsim3,Cache#,O3CPUAll
 
 # tracediff flags
 GEM5_TRACEDIFF=util/tracediff

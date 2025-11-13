@@ -34,6 +34,7 @@ class Args:
     counter_bits: int = 56
     mac_bits: int = 64
     aes_block_bits: int = 128
+    dmac_bits: int = 64
 
 
 @dataclass
@@ -57,18 +58,16 @@ def configure(args: Args):
     # total size t [bits] >= 128pl + ns
     #            t [bits] >= 128p^(h+1) + s(p^(h+1) - 1)/(p - 1)
     # => h = floor(log_p((t(p - 1) + s) / (128(p - 1) + s))) - 1
-    tree_height = (
-        math.floor(
-            math.log(
-                (args.total_memory_bytes * (args.arity - 1) + tree_node_bytes)
-                / (
-                    (args.aes_block_bits // 8) * (args.arity - 1)
-                    + tree_node_bytes
-                )
+    tree_height = math.floor(
+        math.log(
+            (args.total_memory_bytes * (args.arity - 1) + tree_node_bytes)
+            / (
+                (args.aes_block_bits // 8) * (args.arity**2)
+                + args.arity * (tree_node_bytes - args.dmac_bits // 8)
+                - args.dmac_bits // 8
             )
-            / math.log(args.arity)
         )
-        - 1
+        / math.log(args.arity)
     )
 
     # calculate node counts
@@ -142,6 +141,7 @@ def main(cmd_args):
             arity=p,
             counter_bits=c,
             mac_bits=m,
+            dmac_bits=64,
         )
         result = configure(args)
         configurations.append((i, args, result))
@@ -158,6 +158,7 @@ def main(cmd_args):
             "counter": ([], "counter [bits]"),
             "mac": ([], "mac [bits]"),
             "aes": ([], "aes block [bits]"),
+            "dmac": ([], "dmac [bits]"),
             "range_total": ([], "total [GiB]"),
             "range_data": ([], "data [GiB]"),
             "range_integrity": ([], "integrity [GiB]"),
@@ -174,6 +175,7 @@ def main(cmd_args):
             table["counter"][0].append(args.counter_bits),
             table["mac"][0].append(args.mac_bits),
             table["aes"][0].append(args.aes_block_bits),
+            table["dmac"][0].append(args.dmac_bits),
             table["range_total"][0].append(result.range_total.gib()),
             table["range_data"][0].append(result.range_data.gib()),
             table["range_integrity"][0].append(result.range_integrity.gib()),

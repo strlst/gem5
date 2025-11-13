@@ -295,10 +295,11 @@ class CryptoCtrl : public ClockedObject
     PacketPtr createPktFromPkt(PacketPtr pkt, MemCmd cmd);
 
     /**
-     * If there are failed packets from the CPU side (due to full buffers),
-     * use this callback to retry those packets.
+     * Callback to hook on completion of Int TRB request.
+     * Can be used, for instance, if there are failed packets from the CPU
+     * side (due to full buffers or similar).
      */
-    void retryFailedCPUPackets();
+    void onIntTRBCompletedRequest();
 
     /**
      * If data sent from the CPU side needs to be encrypted, emulate

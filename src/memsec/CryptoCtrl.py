@@ -30,6 +30,7 @@ class MACUnit(SimObject):
     cxx_class = "gem5::MACUnit"
 
     mac_bits = Param.Int(64, "MAC resulting size in bits")
+    dmac_bits = Param.Int(64, "Data MAC resulting size in bits")
     mac_cycles = Param.Cycles(40, "MAC operation cycle delay per block")
     mac_ii = Param.Cycles(10, "MAC operation initiation interval per block")
 
@@ -50,11 +51,11 @@ class IntTRB(SimObject):
             " requests that can be in-flight at the same time"
         ),
     )
-    bus_bytes = Param.Int("bus size in bytes")
+    bus_bytes = Param.Int(64, "bus size in bytes")
     packing_factor = Param.Int(
-        "amount of counters which form one node (or MAC)"
+        8, "amount of counters which form one node (or MAC)"
     )
-    counter_bytes = Param.Int("AES counter value size in bytes")
+    counter_bits = Param.Int(56, "AES counter value size in bytes")
     tree_height = Param.Int("integrity tree layer count")
     tree_node_bytes = Param.Int("integrity tree node size in bytes")
     range_integrity = Param.AddrRange("integrity region memory range")
@@ -82,7 +83,7 @@ class CryptoCtrl(ClockedObject):
     )
 
     total_memory_addresses = Param.Int(0, "total memory size in bytes")
-    bus_bytes = Param.Int(0, "bus size in bytes")
+    bus_bytes = Param.Int(64, "bus size in bytes")
     packing_factor = Param.Int(
         8, "amount of counters which form one node (or MAC)"
     )

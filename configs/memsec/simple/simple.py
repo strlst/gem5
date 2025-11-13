@@ -80,7 +80,7 @@ def add_custom_args(parser):
     )
     parser.add_argument(
         "--crypto-aes-block-bits",
-        default="128",
+        default=128,
         type=int,
         help="AES block size in bits (default: 128)",
     )
@@ -88,30 +88,30 @@ def add_custom_args(parser):
     # https://ieeexplore.ieee.org/document/7019004
     parser.add_argument(
         "--crypto-aes-enc-cycles",
-        default="336",
+        default=336,
         help="AES encryption delay in cycles (default: 336)",
     )
     parser.add_argument(
         "--crypto-aes-dec-cycles",
-        default="216",
+        default=216,
         type=int,
         help="AES decryption delay in cycles (default: 216)",
     )
     parser.add_argument(
         "--crypto-aes-enc-ii",
-        default="336",
+        default=336,
         type=int,
         help="AES encryption initiation interval in cycles (default: 336)",
     )
     parser.add_argument(
         "--crypto-aes-dec-ii",
-        default="216",
+        default=216,
         type=int,
         help="AES decryption initiation interval in cycles (default: 216)",
     )
     parser.add_argument(
         "--crypto-mac-cycles",
-        default="200",
+        default=200,
         type=int,
         help="MAC operation delay in cycles (default: 200)",
     )
@@ -123,19 +123,25 @@ def add_custom_args(parser):
     )
     parser.add_argument(
         "--crypto-counter-bits",
-        default="56",
+        default=56,
         type=int,
         help="Amount of bits per AES counter value (default: 56)",
     )
     parser.add_argument(
         "--crypto-mac-bits",
-        default="56",
+        default=64,
         type=int,
         help="Amount of bits per MAC value (default: 64)",
     )
     parser.add_argument(
+        "--crypto-dmac-bits",
+        default=64,
+        type=int,
+        help="Amount of bits per data MAC value (default: 64)",
+    )
+    parser.add_argument(
         "--crypto-packing-factor",
-        default="8",
+        default=8,
         type=int,
         help="Amount counters to group with one MAC for Intel SGX style integrity trees (default: 8)",
     )

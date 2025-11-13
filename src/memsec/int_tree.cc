@@ -15,7 +15,8 @@ IntTRB::IntTRB(const IntTRBParams& params)
     : SimObject(params), sys(params.system),
       requestorId(sys->getRequestorId(this)), size(params.size),
       bus_bytes(params.bus_bytes), packing_factor(params.packing_factor),
-      counter_bytes(params.counter_bytes), tree_height(params.tree_height),
+      counter_bits(params.counter_bits),
+      counter_bytes(params.counter_bits / 8), tree_height(params.tree_height),
       tree_node_bytes(params.tree_node_bytes),
       non_leaf_nodes(
           (std::pow(params.packing_factor, params.tree_height) - 1) /
@@ -26,9 +27,9 @@ IntTRB::IntTRB(const IntTRBParams& params)
     DPRINTF(IntTRB, "Created integrity tree request buffer with properties\n");
     DPRINTF(IntTRB, "\t\t\t%d queue size\n", params.size);
     DPRINTF(IntTRB,
-        "\t\t\t%d tree node bytes (%d height, %d counter bytes, %d non "
+        "\t\t\t%d tree node bytes (%d height, %d counter bits, %d non "
         "leaf nodes)\n",
-        params.tree_node_bytes, params.tree_height, params.counter_bytes,
+        params.tree_node_bytes, params.tree_height, params.counter_bits,
         non_leaf_nodes);
 }
 
@@ -327,8 +328,16 @@ IntTRB::release_request(Addr node_address)
         "request from integrity tree request buffer\n",
         front.to_string());
 
-    DPRINTF(IntTRB,
-        "dequeueing 0x%x (read=%d) from buffer with %d entries\n",
+/*
+    // print nodes and its counter tree translations
+    printf("%lx ~", front.data_address);
+    for (auto r : front.nodes) {
+        printf(" %lx", r.address);
+    }
+    printf("\n");
+*/
+
+    DPRINTF(IntTRB, "dequeueing 0x%x (read=%d) from buffer with %d entries\n",
         front.data_address, front.is_read, queue.size());
 
     // finally remove element

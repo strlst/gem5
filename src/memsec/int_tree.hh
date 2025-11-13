@@ -128,6 +128,7 @@ class IntTRB : public SimObject
     int32_t size;
     uint32_t bus_bytes;
     uint32_t packing_factor;
+    uint32_t counter_bits;
     uint32_t counter_bytes;
     uint32_t tree_height;
     uint32_t tree_node_bytes;
@@ -206,7 +207,8 @@ class IntTRB : public SimObject
     Port& getPort(const std::string& if_name, PortID idx);
     bool handleResponse(PacketPtr pkt);
 
-    bool is_busy() {
+    bool is_busy()
+    {
         // prevent queue from filling up when set to -1
         return size >= 0 && queue.size() >= size;
     }
