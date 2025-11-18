@@ -9,7 +9,26 @@ import sys
 
 spec_commands = "benchmark/spec-commands.json"
 # spec_selected = ["519.lbm_r", "538.imagick_r", "505.mcf_r", "557.xz_r"]
-spec_selected = ["519.lbm_r", "538.imagick_r", "505.mcf_r"]
+spec_selected = [
+    "503.bwaves_r",
+    "507.cactuBSSN_r",
+    "508.namd_r",
+    "511.povray_r",
+    "519.lbm_r",
+    "538.imagick_r",
+    # "544.nab_r",
+    # "549.fotonik3d_r",
+    # "554.roms_r",
+    "997.specrand_fr",
+    "502.gcc_r",
+    # "505.mcf_r",
+    # "520.omnetpp_r",
+    "531.deepsjeng_r",
+    "541.leela_r",
+    "548.exchange2_r",
+    "557.xz_r",
+    # "999.specrand_ir",
+]
 
 
 def generate_configurations():
@@ -24,15 +43,14 @@ def generate_configurations():
             "defrag",
             "big_buff",
             "big_mdcache",
-            "direct_mdcache",
             "no_delay",
         ],
-        "crypto-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 80, 1],
-        "crypto-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 80, 1],
-        "crypto-aes-enc-ii": [20, 20, 20, 20, 20, 20, 20, 1],
-        "crypto-aes-dec-ii": [20, 20, 20, 20, 20, 20, 20, 1],
-        "crypto-mac-cycles": [40, 40, 40, 40, 40, 40, 40, 1],
-        "crypto-mac-ii": [10, 10, 10, 10, 10, 10, 10, 1],
+        "crypto-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 1],
+        "crypto-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 1],
+        "crypto-aes-enc-ii": [20, 20, 20, 20, 20, 20, 1],
+        "crypto-aes-dec-ii": [20, 20, 20, 20, 20, 20, 1],
+        "crypto-mac-cycles": [40, 40, 40, 40, 40, 40, 1],
+        "crypto-mac-ii": [10, 10, 10, 10, 10, 10, 1],
         "metadata-cache-size": [
             "32KiB",
             "32KiB",
@@ -41,12 +59,11 @@ def generate_configurations():
             "32KiB",
             "4096KiB",
             "32KiB",
-            "32KiB",
         ],
-        "metadata-cache-assoc": [8, 8, 8, 8, 8, 32, 1, 8],
-        "int-trb-size": [1, 4, 4, 4, 128, 1, 1, 1],
-        "int-merge-req": [2 <= i <= 4 for i in range(8)],
-        "int-defrag-req": [3 <= i <= 4 for i in range(8)],
+        "metadata-cache-assoc": [8, 8, 8, 8, 8, 32, 8],
+        "int-trb-size": [1, 4, 4, 4, 128, 1, 1],
+        "int-merge-req": [2 <= i <= 4 for i in range(7)],
+        "int-defrag-req": [3 <= i <= 4 for i in range(7)],
     }
 
     configurations = [

@@ -125,7 +125,7 @@ def analyze(statistics, target, fname, fields, splitfunc):
             )
 
 
-def summarize_statistics(statistics, multi_plot=False):
+def summarize_statistics(statistics):
     # process extracted statistics
     data = {"by-dramsim3": dict(), "by-gem5": dict()}
     descriptions = dict()
@@ -161,12 +161,10 @@ def summarize_statistics(statistics, multi_plot=False):
 
     df_gem5 = prepare_df(pd.DataFrame(data["by-gem5"]))
     for stat in gem5_fields:
-        plot_stat(df_gem5, stat, descriptions[stat], "gem5", multi_plot)
+        plot_stat_line(df_gem5, stat, descriptions[stat], "gem5")
     df_dramsim3 = prepare_df(pd.DataFrame(data["by-dramsim3"]["channel0"]))
     for stat in dramsim3_fields:
-        plot_stat(
-            df_dramsim3, stat, descriptions[stat], "dramsim3", multi_plot
-        )
+        plot_stat_line(df_dramsim3, stat, descriptions[stat], "dramsim3")
 
 
 def bin_schedule(hits, fname):
@@ -227,7 +225,9 @@ def str_before_n_th_index(string, char, n):
 
 def prepare_df(df):
     df = df.sort_index().reset_index().rename(columns={"index": "benchmark"})
-    df["mode"] = df["benchmark"].map(lambda s: str_after_n_th_index(s, "_", 5))
+    df["configuration"] = df["benchmark"].map(
+        lambda s: str_after_n_th_index(s, "_", 5)
+    )
     df["benchmark"] = df["benchmark"].map(
         lambda s: str_before_n_th_index(s, "_", 3)
     )
@@ -236,7 +236,6 @@ def prepare_df(df):
 
 def plot_imbalance(data):
     sns.set(style="whitegrid")
-    plt.figure(figsize=(16, 12))
     plt.rcParams.update(
         {
             "text.usetex": True,
@@ -257,14 +256,19 @@ def plot_imbalance(data):
         df["benchmark"], categories=list(data.keys()), ordered=True
     )
 
-    sns.lineplot(
+    plt.figure(figsize=(12, 8))
+    ax = sns.lineplot(
         data=df,
         x="benchmark",
         y="value",
         hue="configuration",
         marker="o",
-        linewidth=2.5,
+        estimator=None,
+        sort=False,
     )
+    for line in ax.lines:
+        line.set_linestyle("--")
+        line.set_linewidth(1.5)
     # plt.ylim(0, 100)
     plt.xticks(rotation=30, ha="right")
     plt.xlabel("Benchmark")
@@ -279,8 +283,10 @@ def plot_imbalance(data):
     plt.savefig(filename, dpi=300, bbox_inches="tight")
     print(f"saved imbalance figure to file {filename}")
 
+    plt.close()
 
-def plot_stat(df, stat, title, simulator, multi_plot=False):
+
+def plot_stat_line(df, stat, title, simulator):
     sns.set(style="whitegrid")
     plt.rcParams.update(
         {
@@ -289,23 +295,55 @@ def plot_stat(df, stat, title, simulator, multi_plot=False):
             "font.size": "26",
         }
     )
-    plt.xticks(rotation=90)
-    # for i, data in enumerate([df, df[df["mode"] != "no_memsec"]]):
-    if multi_plot:
-        fig, axes = plt.subplots(
-            nrows=2, ncols=1, figsize=(16, 12), sharex=True
-        )
-        for i, data in enumerate([df, df[df["mode"] != "no_memsec"]]):
-            ax = sns.barplot(
-                x="benchmark", y=stat, data=data, hue="mode", ax=axes[i]
-            )
-            ax.legend(loc="upper right", bbox_to_anchor=(1.0, 1.0))
-            ax.set_title(title)
-    else:
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(16, 12), sharex=True)
-        ax = sns.barplot(x="benchmark", y=stat, data=df, hue="mode", ax=ax)
-        ax.legend(loc="upper right", bbox_to_anchor=(1.0, 1.0))
-        ax.set_title(title)
+
+    order = df["benchmark"].unique()
+
+    plt.figure(figsize=(12, 8))
+    ax = sns.lineplot(
+        data=df,
+        x="benchmark",
+        y=stat,
+        hue="configuration",
+        marker="o",
+        estimator=None,
+        sort=False,
+    )
+    for line in ax.lines:
+        line.set_linestyle("--")
+        line.set_linewidth(1.5)
+    plt.xticks(rotation=30, ha="right")
+    plt.xlabel("Benchmark")
+    plt.ylabel(stat)
+    # plt.title(f'{stat} per benchmark for each configuration')
+    plt.title(title)
+    plt.legend(
+        title="Configuration", bbox_to_anchor=(1.02, 1), loc="upper left"
+    )
+    plt.tight_layout()
+
+    filename = os.path.join("plots", f"{simulator}-{stat}.png")
+    plt.savefig(filename, dpi=300, bbox_inches="tight")
+    print(f"saved figure {simulator}-{stat} to file {filename}")
+
+    plt.close()
+
+
+def plot_stat_bar(df, stat, title, simulator):
+    sns.set(style="whitegrid")
+    plt.rcParams.update(
+        {
+            "text.usetex": True,
+            "font.family": "sans-serif",
+            "font.size": "26",
+        }
+    )
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(12, 8), sharex=True)
+    ax = sns.barplot(
+        x="benchmark", y=stat, data=df, hue="configuration", ax=ax
+    )
+    ax.legend(loc="upper right", bbox_to_anchor=(1.0, 1.0))
+    ax.set_title(title)
+    plt.xticks(rotation=30)
     plt.tight_layout()
 
     filename = os.path.join("plots", f"{simulator}-{stat}.png")
@@ -355,7 +393,7 @@ def main(args):
         save(args, statistics)
 
     if not args.skip_statistics:
-        summarize_statistics(statistics, args.multi_plot)
+        summarize_statistics(statistics)
 
     if not args.skip_imbalance:
         analyze_imbalance(overhead)
@@ -367,11 +405,6 @@ if __name__ == "__main__":
         "-o",
         "--out-path",
         help="Output file path to write resulting shell script to",
-    )
-    parser.add_argument(
-        "-m",
-        "--multi-plot",
-        help="Generate two plots, including and excluding base architecture for easier comparison",
     )
     parser.add_argument(
         "-s",

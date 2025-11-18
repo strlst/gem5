@@ -44,3 +44,15 @@ trace*
 result
 plots
 run-spec-benchmarks.sh
+# spec files
+pscyee.out
+puzzles.txt
+refrate1_dqnrm.log
+refrate1_resid.log
+refrate2_dqnrm.log
+refrate2_resid.log
+refrate3_dqnrm.log
+refrate3_resid.log
+refrate4_dqnrm.log
+refrate4_resid.log
+s.txt
