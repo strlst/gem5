@@ -1,4 +1,5 @@
 #!/bin/bash
+mkdir -p result
 (echo "int_trb_size;latency"
 for i in $(seq 0 10); do
     echo -n "$((2 ** $i));"

@@ -89,6 +89,10 @@ benchmark: tidy
 summary:
 	python3 benchmark/gen_summary.py
 
+measure-int-trb-latencies:
+	benchmark/benchmark_int_trb_latencies.sh
+	python3 benchmark/plot_int_trb_bench.py
+
 force-clean:
 	rm -rf m5out build
 

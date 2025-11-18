@@ -17,13 +17,24 @@ def generate_configurations():
     # each configuration might as well be hardcoded directly, but this way
     # saves spelling each parameter for each configuration
     crypto_params = {
-        "crypto-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 1],
-        "crypto-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 1],
-        "crypto-aes-enc-ii": [20, 20, 20, 20, 20, 20, 1],
-        "crypto-aes-dec-ii": [20, 20, 20, 20, 20, 20, 1],
-        "crypto-mac-cycles": [40, 40, 40, 40, 40, 40, 1],
-        "crypto-mac-ii": [10, 10, 10, 10, 10, 10, 1],
+        "profile": [
+            "basic",
+            "buff",
+            "merge",
+            "defrag",
+            "big_buff",
+            "big_mdcache",
+            "direct_mdcache",
+            "no_delay",
+        ],
+        "crypto-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 80, 1],
+        "crypto-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 80, 1],
+        "crypto-aes-enc-ii": [20, 20, 20, 20, 20, 20, 20, 1],
+        "crypto-aes-dec-ii": [20, 20, 20, 20, 20, 20, 20, 1],
+        "crypto-mac-cycles": [40, 40, 40, 40, 40, 40, 40, 1],
+        "crypto-mac-ii": [10, 10, 10, 10, 10, 10, 10, 1],
         "metadata-cache-size": [
+            "32KiB",
             "32KiB",
             "32KiB",
             "32KiB",
@@ -32,8 +43,10 @@ def generate_configurations():
             "32KiB",
             "32KiB",
         ],
-        "metadata-cache-assoc": [8, 8, 8, 32, 8, 1, 8],
-        "int-trb-size": [1, 2, 128, 1, 1, 1, 1],
+        "metadata-cache-assoc": [8, 8, 8, 8, 8, 32, 1, 8],
+        "int-trb-size": [1, 4, 4, 4, 128, 1, 1, 1],
+        "int-merge-req": [2 <= i <= 4 for i in range(8)],
+        "int-defrag-req": [3 <= i <= 4 for i in range(8)],
     }
 
     configurations = [
@@ -49,7 +62,7 @@ def generate_configurations():
 def print_configurations():
     print(f"configuration information:")
     for i, conf in enumerate(generate_configurations()):
-        print(f"  memsec_{i} {conf}")
+        print(f"  {conf["profile"]} {conf}")
 
 
 def main(args):
@@ -137,12 +150,18 @@ def main(args):
                 outdir = os.path.join(
                     "result",
                     # f"{bench}_{run_id}_{suffix}_{shorthand}",
-                    f"{bench}_{run_id}_{suffix}_memsec_{i}",
+                    f"{bench}_{run_id}_{suffix}_memsec_{conf['profile']}",
                 )
+                # not the most elegant solution, but it works
                 crypto_params = " ".join(
                     [
-                        f"--{k}={f'\'{conf[k]}\'' if type(conf[k]) == str else conf[k]}"
+                        (
+                            (f"--{k}" if conf[k] else f"--no-{k}")
+                            if type(conf[k]) == bool
+                            else f"--{k}={f'\'{conf[k]}\'' if type(conf[k]) == str else conf[k]}"
+                        )
                         for k in conf
+                        if k != "profile"
                     ]
                 )
                 final_cmd = f'mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=memsec GEM5_CONFIG_CRYPTO_PERF="{crypto_params}" 2>&1 > {outdir}/log &'

@@ -13,7 +13,7 @@ def read_data(filename):
         body = f.read().strip()
         data = [line.split(";") for line in body.split("\n")]
         int_trb_size = np.array([int(row[0]) for row in data])
-        latency = np.array([int(row[1]) for row in data])
+        latency = np.array([int(float(row[1]) * 10e6 / 10e12) for row in data])
     return int_trb_size, latency
 
 
@@ -62,8 +62,8 @@ def plot_data(int_trb_size, latency):
     )
 
     # Format y-axis with thousands separators
-    ax.set_ylabel("latency [ticks]")
-    ax.set_xlabel("int_trb_size (log scale)")
+    ax.set_ylabel("latency [us]")
+    ax.set_xlabel("Integrity Tree Request Buffer (IntTRB) size (log scale)")
     ax.set_title("Latency vs IntTRB size")
 
     # Annotate each point with a compact label

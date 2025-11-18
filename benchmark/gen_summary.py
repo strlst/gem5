@@ -181,6 +181,10 @@ def bin_schedule(hits, fname):
 
 def analyze_imbalance(overhead):
     # NOTE: imbalance is defined as min(k, l)/max(k, l) over the access counts of any two regions of memory
+    # for instance, we can compare region
+    #   region(k)=[0, 0x17ff]
+    # against region
+    #   region(l)=[0x1800, 0x1fff]
     print(overhead)
     data = dict()
     for benchmark in sorted(overhead):
