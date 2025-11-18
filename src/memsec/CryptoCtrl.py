@@ -51,6 +51,12 @@ class IntTRB(SimObject):
             " requests that can be in-flight at the same time"
         ),
     )
+    merge_req = Param.Bool(False, "whether to merge int requests in buffer")
+    defrag_req = Param.Bool(
+        False,
+        "whether to defragment merged int requests in buffer (depends on "
+        "`merge_req`)",
+    )
     bus_bytes = Param.Int(64, "bus size in bytes")
     packing_factor = Param.Int(
         8, "amount of counters which form one node (or MAC)"

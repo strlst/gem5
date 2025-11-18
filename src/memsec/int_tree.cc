@@ -1,11 +1,12 @@
 #include "memsec/int_tree.hh"
 
 #include <cstdint>
+#include <sstream>
 
 #include "base/trace.hh"
-#include "debug/CryptoCtrl.hh"
 #include "debug/IntTRB.hh"
 #include "memsec/crypto_event.hh"
+#include "memsec/int_tree_req.hh"
 #include "memsec/util.hh"
 
 namespace gem5
@@ -21,7 +22,9 @@ IntTRB::IntTRB(const IntTRBParams& params)
       non_leaf_nodes(
           (std::pow(params.packing_factor, params.tree_height) - 1) /
           (params.packing_factor - 1)),
-      range_integrity(params.range_integrity), mac_unit(params.mac_unit),
+      range_integrity(params.range_integrity),
+      merge_requests(params.merge_req),
+      defragment_requests(params.defrag_req), mac_unit(params.mac_unit),
       mdcachePort(params.name + ".mdcache_side_port", this), stats(this)
 {
     DPRINTF(IntTRB, "Created integrity tree request buffer with properties\n");
@@ -138,11 +141,72 @@ IntTRB::handleResponse(PacketPtr pkt)
 }
 
 void
+IntTRB::merge_from_queue()
+{
+    // left merge strategy, combine common (upper) nodes and fill
+    // request slots with remaining requests
+    if (queue.size() > 1) {
+        //print_queue(queue);
+        // reverse iteration
+        auto right = queue.rbegin();
+        auto left = std::next(right);
+        for (; left != queue.rend(); left++, right++) {
+            if (!left->dispatched) {
+                int merged = left->merge_from(*right);
+                if (merged > 0)
+                    DPRINTF(IntTRB,
+                        "merged %d nodes from request %ld into %ld\n", merged,
+                        left->serial, right->serial);
+            }
+        }
+        // sweep queue again to delete fully merged (empty) requests
+        for (auto it = queue.begin(); it != queue.end();) {
+            if (it->nodes.size() == 0) {
+                DPRINTF(IntTRB, "deleting fully merged request %ld\n",
+                    it->serial);
+                it = queue.erase(it);
+            } else {
+                it++;
+            }
+        }
+        //printf("post-merge ");
+        //print_queue(queue);
+        //printf("\n");
+    }
+}
+
+void
+IntTRB::defragment_from_queue()
+{
+    if (defragment_requests) {
+        auto left = queue.begin();
+        auto right = std::next(left);
+        while (right != queue.end()) {
+            if (left->nodes.size() + right->nodes.size() <= tree_height) {
+                DPRINTF(IntTRB,
+                    "defragmenting requests %ld (%ld elements) and %ld (%ld "
+                    "elements)\n",
+                    left->serial, left->nodes.size(), right->serial,
+                    right->nodes.size());
+                for (auto req : right->nodes)
+                    left->nodes.emplace_back(req);
+                right = queue.erase(right);
+            } else {
+                right++;
+            }
+            left++;
+        }
+    }
+}
+
+void
 IntTRB::dispatch_from_queue()
 {
+    if (merge_requests)
+        merge_from_queue();
+    if (defragment_requests)
+        defragment_from_queue();
     // simple dispatch logic: just dispatch front
-    // this cannot really be changed until merged node dispatches
-    // are addressed theoretically
     if (queue.size() > 0 && !queue.front().dispatched)
         dispatch_request(queue.front());
 }
@@ -247,7 +311,9 @@ IntTRB::update_metadata(PacketPtr pkt)
 {
     auto node_address = pkt->getAddr();
     auto request = get_request(node_address);
-    uint8_t offset = request.get_offset(node_address);
+    Diffs& diffs = request.get_diffs(node_address);
+    // TODO: update offset calculation and subsequent counter value update
+    uint8_t offset = diffs.begin()->first;
     DPRINTF(IntTRB, "updating 0x%x request %s offset 0x%x\n", node_address,
         request.to_string(), offset);
     // next we want to update the counter at position offset, in a
@@ -297,7 +363,7 @@ IntTRB::complete_request_node(Addr node_address)
             DPRINTF(IntTRB, "finished metadata %s 0x%x, %s\n",
                 it->is_read ? "read" : "write", node_address,
                 it->to_string());
-            if (it->completed_layers >= tree_height) {
+            if (it->completed_layers >= it->nodes.size()) {
                 // NOTE: perform on-chip root node counter update
                 // this can be done always in a single cycle since each node
                 // is an on-chip register by design
@@ -319,7 +385,7 @@ IntTRB::release_request(Addr node_address)
     // make sure to free addresses from set
     auto front = queue.front();
 
-    panic_if(front.completed_layers < tree_height,
+    panic_if(front.completed_layers < front.nodes.size(),
         "request %d was released even though it's not complete!"
         "(%d < %d)\n",
         front.serial, front.completed_layers, tree_height);
@@ -328,7 +394,7 @@ IntTRB::release_request(Addr node_address)
         "request from integrity tree request buffer\n",
         front.to_string());
 
-/*
+    /*
     // print nodes and its counter tree translations
     printf("%lx ~", front.data_address);
     for (auto r : front.nodes) {
@@ -380,6 +446,17 @@ void
 IntTRB::sendRangeChange()
 {
     // no CPU to send range change to
+}
+
+void
+IntTRB::print_queue(std::list<IntTreeReq> queue)
+{
+    std::ostringstream ss;
+    ss << "queue state\n";
+    for (auto r : queue) {
+        ss << "  - " << r.to_string() << std::endl;
+    }
+    DPRINTF(IntTRB, "%s\n", ss.str());
 }
 
 };

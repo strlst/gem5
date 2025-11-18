@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
-#include <list>
 #include <queue>
 
 #include "base/addr_range.hh"
@@ -12,6 +11,7 @@
 #include "base/types.hh"
 #include "mem/packet.hh"
 #include "mem/port.hh"
+#include "memsec/int_tree_req.hh"
 #include "memsec/mac_unit.hh"
 #include "params/IntTRB.hh"
 #include "sim/sim_object.hh"
@@ -24,99 +24,6 @@ enum IntegrityMACEventType
 {
     IntegrityMACCheck,
     IntegrityMACUpdate,
-};
-
-struct IntTreeReqNode
-{
-    Addr address;
-    uint8_t offset;
-    bool completed = false;
-
-    IntTreeReqNode(Addr address, uint8_t offset)
-        : address(address), offset(offset)
-    {
-    }
-
-    bool complete(Addr address)
-    {
-        // we want to return true only when we mark this request complete for
-        // the first time, subsequent times return false
-        // touching this code is likely unwise
-        return !completed && (completed = address == this->address);
-    }
-};
-
-struct IntTreeReq
-{
-    // integer identifying sequential causality
-    uint64_t serial;
-    // address of actual physical memory being protected
-    Addr data_address;
-    // each request can be a write or read request (tree update or tree check)
-    bool is_read;
-    // each integrity tree request encompasses a path of nodes from the leaf
-    // up to the node before the root
-    std::list<IntTreeReqNode> nodes = std::list<IntTreeReqNode>();
-    uint8_t completed_layers = 0;
-    bool dispatched = false;
-
-    IntTreeReq(uint64_t serial, Addr data_address, bool is_read)
-        : serial(serial), data_address(data_address), is_read(is_read)
-    {
-        panic_if(sizeof(Addr) != sizeof(uint64_t), "unsupported addr size\n");
-    }
-
-    void add_request_node(Addr node_address, uint8_t node_offset)
-    {
-        nodes.emplace_back(IntTreeReqNode(node_address, node_offset));
-    }
-
-    bool complete(Addr node_address)
-    {
-        for (auto& node : nodes) {
-            if (node.complete(node_address)) {
-                completed_layers++;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    bool contains_request_node(Addr node_address)
-    {
-        for (auto& node : nodes) {
-            if (node.address == node_address) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    uint8_t get_offset(Addr node_address)
-    {
-        for (auto& node : nodes) {
-            if (node.address == node_address) {
-                return node.offset;
-            }
-        }
-        panic("could not find node address 0x%x in request\n", node_address);
-    }
-
-    std::string to_string()
-    {
-        std::ostringstream ss;
-        ss << "IntegrityTreeReq(";
-        ss << "serial=" << serial;
-        ss << ", data_addr=0x" << std::hex << data_address << std::dec;
-        ss << ", is_read=" << unsigned(is_read);
-        for (auto node : nodes) {
-            ss << ", node_addr=0x" << std::hex << node.address << std::dec
-               << "@" << unsigned(node.offset) << (node.completed ? "*" : "");
-        }
-        ss << ", completed_layers=" << unsigned(completed_layers);
-        ss << ")";
-        return ss.str();
-    }
 };
 
 class IntTRB : public SimObject
@@ -136,6 +43,10 @@ class IntTRB : public SimObject
     const uint64_t non_leaf_nodes;
     AddrRange range_integrity;
     std::list<IntTreeReq> queue;
+    // whether to simulate request merging strategy
+    bool merge_requests;
+    // whether to simulate request defragmentation strategy
+    bool defragment_requests;
 
     // identify requests
     uint64_t serial = 0;
@@ -219,7 +130,12 @@ class IntTRB : public SimObject
     inline std::list<IntTreeReq>::iterator get_request_it(Addr node_address);
     IntTreeReq& get_request(Addr node_address);
 
+    // print helpers
+    void print_queue(std::list<IntTreeReq> queue);
+
     // dispatch logic
+    void merge_from_queue();
+    void defragment_from_queue();
     void dispatch_from_queue();
 
     // state change

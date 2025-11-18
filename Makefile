@@ -12,12 +12,13 @@ GEM5_CONFIG_SPEC:=--maxinsts 1000000
 GEM5_CONFIG_FULL:=configs/memsec/full.py --num-cores=1 --ooo --$(MEMSEC)
 GEM5_CONFIG_CACHE:=--l1i-size=1KiB --l1d-size=1KiB --l2-size=2KiB --no-l3
 GEM5_CONFIG_CRYPTO_SHAPE:=--crypto-counter-bits=56 --crypto-mac-bits=64 --crypto-packing-factor=8 --crypto-aes-block-bits=128
-GEM5_CONFIG_CRYPTO_PERF:=--crypto-aes-enc-cycles=80 --crypto-aes-dec-cycles=80 --crypto-aes-enc-ii=20 --crypto-aes-dec-ii=20 --crypto-mac-cycles=40 --crypto-mac-ii=10 --metadata-cache-size=1024KiB --metadata-cache-assoc=8 --int-trb-size=1
+GEM5_CONFIG_CRYPTO_PERF:=--crypto-aes-enc-cycles=80 --crypto-aes-dec-cycles=80 --crypto-aes-enc-ii=20 --crypto-aes-dec-ii=20 --crypto-mac-cycles=40 --crypto-mac-ii=10 --metadata-cache-size=1024KiB --metadata-cache-assoc=8 --int-trb-size=128 --int-merge-req --int-defrag-req
 
 # running flags
 # binary is used for bare metal tests
 BINARY:=tests/test-progs/matmul/bin/riscv/linux/matmul
-DEBUG_FLAGS:=CryptoCtrl,IntTRB,MACUnit,AESUnit,Vma,SyscallVerbose,DRAMsim3,Cache#,O3CPUAll
+#DEBUG_FLAGS:=CryptoCtrl,IntTRB,MACUnit,AESUnit,Vma,SyscallVerbose,DRAMsim3,Cache#,O3CPUAll
+DEBUG_FLAGS:=CryptoCtrl,IntTRB
 
 # tracediff flags
 GEM5_TRACEDIFF=util/tracediff

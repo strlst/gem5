@@ -160,6 +160,19 @@ def add_custom_args(parser):
         type=int,
         help="Number of permissible in-flight requests (default: 32, set to -1 for infinite size)",
     )
+    parser.add_argument(
+        "--int-merge-req",
+        action=argparse.BooleanOptionalAction,
+        help="Whether to apply more advanced inttrb request merging strategy "
+        "(default: False)",
+    )
+    parser.add_argument(
+        "--int-defrag-req",
+        action=argparse.BooleanOptionalAction,
+        help="Whether to apply more advanced inttrb request defragmentation "
+        "strategy for previously merged requests "
+        "(depends on `--int-merge-req`, default=False)",
+    )
 
 
 def create_system(args):

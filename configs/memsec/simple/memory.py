@@ -137,6 +137,8 @@ class MemorySystem:
 
         int_trb = system.crypto_ctrl.int_trb
         int_trb.size = args.int_trb_size
+        int_trb.merge_req = args.int_merge_req
+        int_trb.defrag_req = args.int_defrag_req
         int_trb.bus_bytes = bus_bytes
         int_trb.packing_factor = args.crypto_packing_factor
         int_trb.counter_bits = args.crypto_counter_bits
