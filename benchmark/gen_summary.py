@@ -52,27 +52,27 @@ gem5_fields = {
     "system.metadata_cache.overallMissRate::total",
     "system.metadata_cache.overallAvgMissLatency::total",
     # "system.metadata_cache.replacements",
-    # "system.crypto_ctrl.successfulReads",
-    # "system.crypto_ctrl.successfulWrites",
-    "system.crypto_ctrl.int_trb.enqueued",
+    # "system.aim_ctrl.successfulReads",
+    # "system.aim_ctrl.successfulWrites",
+    "system.aim_ctrl.int_trb.enqueued",
     # "system.mem_ctrl.bytesRead::cpu.inst",
     # "system.mem_ctrl.bytesRead::cpu.data",
-    # "system.mem_ctrl.bytesRead::crypto_ctrl.int_trb",
+    # "system.mem_ctrl.bytesRead::aim_ctrl.int_trb",
     "system.mem_ctrl.bytesRead::total",
     "system.mem_ctrl.bytesWritten::total",
     # "system.mem_ctrl.numReads::cpu.inst",
     # "system.mem_ctrl.numReads::cpu.data",
-    # "system.mem_ctrl.numReads::crypto_ctrl.int_trb",
+    # "system.mem_ctrl.numReads::aim_ctrl.int_trb",
     "system.mem_ctrl.numReads::total",
     "system.mem_ctrl.numWrites::total",
     # "system.mem_ctrl.bwRead::cpu.inst",
     # "system.mem_ctrl.bwRead::cpu.data",
-    # "system.mem_ctrl.bwRead::crypto_ctrl.int_trb",
+    # "system.mem_ctrl.bwRead::aim_ctrl.int_trb",
     "system.mem_ctrl.bwRead::total",
     "system.mem_ctrl.bwWrite::total",
     # "system.mem_ctrl.bwTotal::cpu.inst",
     # "system.mem_ctrl.bwTotal::cpu.data",
-    # "system.mem_ctrl.bwTotal::crypto_ctrl.int_trb",
+    # "system.mem_ctrl.bwTotal::aim_ctrl.int_trb",
     "system.mem_ctrl.bwTotal::total",
 }
 
@@ -337,20 +337,20 @@ def plot_stat_bar(df, stat, title, simulator):
             "font.size": "26",
         }
     )
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(12, 8), sharex=True)
-    ax = sns.barplot(
-        x="benchmark", y=stat, data=df, hue="configuration", ax=ax
+    plt.figure(figsize=(12, 8))
+    ax = sns.barplot(x="benchmark", y=stat, data=df, hue="configuration")
+    plt.legend(
+        title="Configuration", bbox_to_anchor=(1.02, 1), loc="upper left"
     )
-    ax.legend(loc="upper right", bbox_to_anchor=(1.0, 1.0))
     ax.set_title(title)
     plt.xticks(rotation=30)
     plt.tight_layout()
 
     filename = os.path.join("plots", f"{simulator}-{stat}.png")
-    fig.savefig(filename, dpi=300, bbox_inches="tight")
+    plt.savefig(filename, dpi=300, bbox_inches="tight")
     print(f"saved figure {simulator}-{stat} to file {filename}")
 
-    plt.close(fig)
+    plt.close()
 
 
 def main(args):

@@ -8,6 +8,7 @@
 
 #include "base/addr_range.hh"
 #include "base/statistics.hh"
+#include "base/stats/units.hh"
 #include "base/types.hh"
 #include "mem/packet.hh"
 #include "mem/port.hh"
@@ -45,8 +46,12 @@ class IntTRB : public SimObject
     std::list<IntTreeReq> queue;
     // whether to simulate request merging strategy
     bool merge_requests;
+    uint64_t merged_requests;
+    uint64_t merged_nodes;
     // whether to simulate request defragmentation strategy
     bool defragment_requests;
+    uint64_t defragmented_requests;
+    uint64_t defragmented_nodes;
 
     // identify requests
     uint64_t serial = 0;
@@ -70,7 +75,7 @@ class IntTRB : public SimObject
         {
         }
 
-        // called by the crypto controller
+        // called by the aim controller
         bool sendPacket(PacketPtr pkt);
 
       protected:
@@ -98,6 +103,9 @@ class IntTRB : public SimObject
         statistics::Scalar mdcacheTotalCountRecv;
         statistics::Scalar mdcacheFailuresCountSend;
         statistics::Scalar mdcacheRetryCountSend;
+        statistics::Scalar fullyMergedRequests;
+        statistics::Scalar mergeRate;
+        statistics::Scalar defragRate;
         PktStats(Group* parent)
             : Group(parent),
               ADD_STAT(enqueued, statistics::units::Count::get(),
@@ -110,7 +118,13 @@ class IntTRB : public SimObject
                   statistics::units::Count::get(),
                   "amount of request packets which failed to send"),
               ADD_STAT(mdcacheRetryCountSend, statistics::units::Count::get(),
-                  "amount of request packets sent as a result of a retry")
+                  "amount of request packets sent as a result of a retry"),
+              ADD_STAT(fullyMergedRequests, statistics::units::Count::get(),
+                  "amount of fully merged requests"),
+              ADD_STAT(mergeRate, statistics::units::Count::get(),
+                  "mean value of merged nodes per request"),
+              ADD_STAT(defragRate, statistics::units::Count::get(),
+                  "mean value of defragmented nodes per request")
         {
         }
     } stats;
@@ -150,6 +164,7 @@ class IntTRB : public SimObject
 
     // events
     void scheduleMACOp(PacketPtr pkt, IntegrityMACEventType type);
+    void scheduleMDCacheSend(PacketPtr pkt, Tick delay);
 
     /**
      * Callback in case a metadata tree node has been checked for integrity
@@ -166,6 +181,14 @@ class IntTRB : public SimObject
      * @param pkt requesting packet
      */
     void IntegrityMACUpdate(PacketPtr pkt);
+
+    /**
+     * Event callback for hassle-free configurable delays on sending packets
+     * to the metadata cache.
+     *
+     * @param pkt requesting packet
+     */
+    void MDCacheSend(PacketPtr pkt);
 };
 
 };

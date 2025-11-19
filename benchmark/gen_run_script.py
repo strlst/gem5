@@ -35,7 +35,7 @@ def generate_configurations():
     # configuration k takes the k-th parameter of each list
     # each configuration might as well be hardcoded directly, but this way
     # saves spelling each parameter for each configuration
-    crypto_params = {
+    aim_params = {
         "profile": [
             "basic",
             "buff",
@@ -45,12 +45,12 @@ def generate_configurations():
             "big_mdcache",
             "no_delay",
         ],
-        "crypto-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 1],
-        "crypto-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 1],
-        "crypto-aes-enc-ii": [20, 20, 20, 20, 20, 20, 1],
-        "crypto-aes-dec-ii": [20, 20, 20, 20, 20, 20, 1],
-        "crypto-mac-cycles": [40, 40, 40, 40, 40, 40, 1],
-        "crypto-mac-ii": [10, 10, 10, 10, 10, 10, 1],
+        "aim-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 1],
+        "aim-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 1],
+        "aim-aes-enc-ii": [20, 20, 20, 20, 20, 20, 1],
+        "aim-aes-dec-ii": [20, 20, 20, 20, 20, 20, 1],
+        "aim-mac-cycles": [40, 40, 40, 40, 40, 40, 1],
+        "aim-mac-ii": [10, 10, 10, 10, 10, 10, 1],
         "metadata-cache-size": [
             "32KiB",
             "32KiB",
@@ -67,10 +67,10 @@ def generate_configurations():
     }
 
     configurations = [
-        dict() for _ in range(len(crypto_params[list(crypto_params)[0]]))
+        dict() for _ in range(len(aim_params[list(aim_params)[0]]))
     ]
-    for param in crypto_params:
-        for i, value in enumerate(crypto_params[param]):
+    for param in aim_params:
+        for i, value in enumerate(aim_params[param]):
             configurations[i][param] = value
 
     yield from configurations
@@ -170,7 +170,7 @@ def main(args):
                     f"{bench}_{run_id}_{suffix}_memsec_{conf['profile']}",
                 )
                 # not the most elegant solution, but it works
-                crypto_params = " ".join(
+                aim_params = " ".join(
                     [
                         (
                             (f"--{k}" if conf[k] else f"--no-{k}")
@@ -181,7 +181,7 @@ def main(args):
                         if k != "profile"
                     ]
                 )
-                final_cmd = f'mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=memsec GEM5_CONFIG_CRYPTO_PERF="{crypto_params}" 2>&1 > {outdir}/log &'
+                final_cmd = f'mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=memsec GEM5_CONFIG_AIM_PERF="{aim_params}" 2>&1 > {outdir}/log &'
                 out_file.write(f"{final_cmd}\n")
             outdir = os.path.join(
                 "result",

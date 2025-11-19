@@ -5,9 +5,10 @@
 
 #include "base/trace.hh"
 #include "debug/IntTRB.hh"
-#include "memsec/crypto_event.hh"
+#include "memsec/aim_event.hh"
 #include "memsec/int_tree_req.hh"
 #include "memsec/util.hh"
+#include "sim/cur_tick.hh"
 
 namespace gem5
 {
@@ -41,7 +42,7 @@ IntTRB::getPort(const std::string& if_name, PortID idx)
 {
     panic_if(idx != InvalidPortID, "This object doesn't support vector ports");
 
-    // this is the name from the Python SimObject declaration (CryptoCtrl.py)
+    // this is the name from the Python SimObject declaration (AIMCtrl.py)
     if (if_name == "metadata_cache_side_port") {
         return mdcachePort;
     } else {
@@ -127,7 +128,8 @@ IntTRB::handleResponse(PacketPtr pkt)
                 "created write-after-read request packet %s\n",
                 formattedPacket(new_pkt));
             update_metadata(new_pkt);
-            mdcachePort.sendPacket(new_pkt);
+            // schedule cache response for next cycle
+            scheduleMDCacheSend(new_pkt, AFTER_1_CYCLE(curTick()));
         }
     } else {
         // forward completion event to queue
@@ -151,17 +153,21 @@ IntTRB::merge_from_queue()
         auto right = queue.rbegin();
         auto left = std::next(right);
         for (; left != queue.rend(); left++, right++) {
-            if (!left->dispatched) {
+            if (!left->dispatched && left->is_read == right->is_read) {
                 int merged = left->merge_from(*right);
                 if (merged > 0)
                     DPRINTF(IntTRB,
                         "merged %d nodes from request %ld into %ld\n", merged,
                         left->serial, right->serial);
+                merged_requests++;
+                merged_nodes += merged;
+                stats.mergeRate = merged_nodes / merged_requests;
             }
         }
         // sweep queue again to delete fully merged (empty) requests
         for (auto it = queue.begin(); it != queue.end();) {
             if (it->nodes.size() == 0) {
+                stats.fullyMergedRequests++;
                 DPRINTF(IntTRB, "deleting fully merged request %ld\n",
                     it->serial);
                 it = queue.erase(it);
@@ -183,6 +189,9 @@ IntTRB::defragment_from_queue()
         auto right = std::next(left);
         while (right != queue.end()) {
             if (left->nodes.size() + right->nodes.size() <= tree_height) {
+                defragmented_requests++;
+                defragmented_nodes += right->nodes.size();
+                stats.defragRate = defragmented_nodes / defragmented_requests;
                 DPRINTF(IntTRB,
                     "defragmenting requests %ld (%ld elements) and %ld (%ld "
                     "elements)\n",
@@ -223,7 +232,8 @@ IntTRB::dispatch_request(IntTreeReq& request)
         // create and send packets for each layer
         PacketPtr packet_fetch_md = createPkt(node.address, tree_node_bytes,
             requestorId, MemCmd::ReadReq);
-        mdcachePort.sendPacket(packet_fetch_md);
+        // schedule cache requests for next cycle
+        scheduleMDCacheSend(packet_fetch_md, AFTER_1_CYCLE(curTick()));
     }
 }
 
@@ -436,10 +446,22 @@ IntTRB::IntegrityMACUpdate(PacketPtr pkt)
 }
 
 void
+IntTRB::MDCacheSend(PacketPtr pkt)
+{
+    mdcachePort.sendPacket(pkt);
+}
+
+void
 IntTRB::scheduleMACOp(PacketPtr pkt, IntegrityMACEventType type)
 {
     schedule(new IntegrityMACEvent(this, pkt, type),
         mac_unit->get_earliest_ready_time(pkt));
+}
+
+void
+IntTRB::scheduleMDCacheSend(PacketPtr pkt, Tick delay)
+{
+    schedule(new MDCacheSendEvent(this, pkt), delay);
 }
 
 void

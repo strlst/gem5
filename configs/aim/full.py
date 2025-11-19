@@ -19,6 +19,8 @@ from gem5.resources.resource import (
 from gem5.simulate.simulator import Simulator
 from gem5.utils.requires import requires
 
+# WARNING: UNMAINTAINED, NOT FULLY IMPLEMENTED!
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -85,7 +87,7 @@ def parse_args():
         help="flag to enable/disable memory security subsystem used for confidentiality and integrity",
     )
     parser.add_argument(
-        "--crypto-aes-block-bits",
+        "--aim-aes-block-bits",
         default="128",
         type=int,
         help="AES block size in bits (default: 128)",
@@ -93,54 +95,54 @@ def parse_args():
     # default parameters sourced from
     # https://ieeexplore.ieee.org/document/7019004
     parser.add_argument(
-        "--crypto-aes-enc-cycles",
+        "--aim-aes-enc-cycles",
         default="336",
         help="AES encryption delay in cycles (default: 336)",
     )
     parser.add_argument(
-        "--crypto-aes-dec-cycles",
+        "--aim-aes-dec-cycles",
         default="216",
         type=int,
         help="AES decryption delay in cycles (default: 216)",
     )
     parser.add_argument(
-        "--crypto-aes-enc-ii",
+        "--aim-aes-enc-ii",
         default="336",
         type=int,
         help="AES encryption initiation interval in cycles (default: 336)",
     )
     parser.add_argument(
-        "--crypto-aes-dec-ii",
+        "--aim-aes-dec-ii",
         default="216",
         type=int,
         help="AES decryption initiation interval in cycles (default: 216)",
     )
     parser.add_argument(
-        "--crypto-mac-cycles",
+        "--aim-mac-cycles",
         default="200",
         type=int,
         help="MAC operation delay in cycles (default: 200)",
     )
     parser.add_argument(
-        "--crypto-mac-ii",
+        "--aim-mac-ii",
         default="200",
         type=int,
         help="MAC operation initiation interval in cycles (default: 200)",
     )
     parser.add_argument(
-        "--crypto-counter-bits",
+        "--aim-counter-bits",
         default="56",
         type=int,
         help="Amount of bits per AES counter value (default: 56)",
     )
     parser.add_argument(
-        "--crypto-mac-bits",
+        "--aim-mac-bits",
         type=int,
         default="56",
         help="Amount of bits per MAC value (default: 64)",
     )
     parser.add_argument(
-        "--crypto-packing-factor",
+        "--aim-packing-factor",
         type=int,
         default="8",
         help="Amount counters to group with one MAC for Intel SGX style integrity trees (default: 8)",

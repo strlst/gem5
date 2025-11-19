@@ -1,19 +1,19 @@
-#ifndef __MEMSEC_CRYPTO_EVENT_HH__
-#define __MEMSEC_CRYPTO_EVENT_HH__
+#ifndef __MEMSEC_AIM_EVENT_HH__
+#define __MEMSEC_AIM_EVENT_HH__
 
-#include "memsec/crypto_ctrl.hh"
+#include "memsec/aim_ctrl.hh"
 #include "memsec/int_tree.hh"
 
 namespace gem5
 {
 
-class CryptoWriteEvent : public Event
+class AIMWriteEvent : public Event
 {
   private:
-    CryptoCtrl *ctrl;
+    AIMCtrl *ctrl;
     PacketPtr pkt;
   public:
-    CryptoWriteEvent(CryptoCtrl *ctrl, PacketPtr pkt)
+    AIMWriteEvent(AIMCtrl *ctrl, PacketPtr pkt)
         : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt)
     {
     }
@@ -21,17 +21,17 @@ class CryptoWriteEvent : public Event
     void process() override
     {
         // process packet by using callback
-        ctrl->opCryptoWrite(pkt);
+        ctrl->opAIMWrite(pkt);
     }
 };
 
-class CryptoReadEvent : public Event
+class AIMReadEvent : public Event
 {
   private:
-    CryptoCtrl *ctrl;
+    AIMCtrl *ctrl;
     PacketPtr pkt;
   public:
-    CryptoReadEvent(CryptoCtrl *ctrl, PacketPtr pkt)
+    AIMReadEvent(AIMCtrl *ctrl, PacketPtr pkt)
         : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt)
     {
     }
@@ -39,18 +39,18 @@ class CryptoReadEvent : public Event
     void process() override
     {
         // process packet by using callback
-        ctrl->opCryptoRead(pkt);
+        ctrl->opAIMRead(pkt);
     };
 };
 
 class DataMACEvent : public Event
 {
   private:
-    CryptoCtrl *ctrl;
+    AIMCtrl *ctrl;
     PacketPtr pkt;
     DataMACEventType type;
   public:
-    DataMACEvent(CryptoCtrl *ctrl, PacketPtr pkt, DataMACEventType type)
+    DataMACEvent(AIMCtrl *ctrl, PacketPtr pkt, DataMACEventType type)
         : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt), type(type)
     {
     }
@@ -97,6 +97,24 @@ class IntegrityMACEvent : public Event
     }
 };
 
+class MDCacheSendEvent : public Event
+{
+  private:
+    IntTRB *int_trb;
+    PacketPtr pkt;
+  public:
+    MDCacheSendEvent(IntTRB *int_trb, PacketPtr pkt)
+        : Event(Default_Pri, AutoDelete), int_trb(int_trb), pkt(pkt)
+    {
+    }
+
+    void process() override
+    {
+        // process packet by using callback
+        int_trb->MDCacheSend(pkt);
+    }
+};
+
 }
 
-#endif // __MEMSEC_CRYPTO_EVENT_HH__
+#endif // __MEMSEC_AIM_EVENT_HH__

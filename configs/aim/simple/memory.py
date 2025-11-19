@@ -50,7 +50,7 @@ class MetadataCache(Cache):
 
 
 class MemorySystem:
-    def parameterize_crypto_system(args, system):
+    def parameterize_aim(args, system):
         # TODO: remove this hack
         bus_bytes = 64
         range_total = AddrRange(
@@ -58,12 +58,10 @@ class MemorySystem:
             size=system.mem_ranges[0].size(),
         )
         total_memory_bytes = range_total.size()
-        p = args.crypto_packing_factor
+        p = args.aim_packing_factor
 
         # get tree node size
-        tree_node_bytes = (
-            args.crypto_counter_bits * p + args.crypto_mac_bits
-        ) // 8
+        tree_node_bytes = (args.aim_counter_bits * p + args.aim_mac_bits) // 8
 
         # formula is derived by hand
         # node size s [bits] = p * c + m
@@ -74,9 +72,9 @@ class MemorySystem:
             math.log(
                 (total_memory_bytes * (p - 1) + tree_node_bytes)
                 / (
-                    (args.crypto_aes_block_bits // 8) * (p**2)
-                    + p * (tree_node_bytes - args.crypto_dmac_bits // 8)
-                    - args.crypto_dmac_bits // 8
+                    (args.aim_aes_block_bits // 8) * (p**2)
+                    + p * (tree_node_bytes - args.aim_dmac_bits // 8)
+                    - args.aim_dmac_bits // 8
                 )
             )
             / math.log(p)
@@ -100,54 +98,54 @@ class MemorySystem:
         leaf_bytes = int(leaf_node_count * tree_node_bytes)
 
         # assign memory regions
-        system.crypto_ctrl.range_total = range_total
-        system.crypto_ctrl.range_data = AddrRange(
+        system.aim_ctrl.range_total = range_total
+        system.aim_ctrl.range_data = AddrRange(
             Addr(range_total.start),
             size=range_data_bytes,
         )
-        system.crypto_ctrl.range_integrity = AddrRange(
-            Addr(system.crypto_ctrl.range_data.end),
+        system.aim_ctrl.range_integrity = AddrRange(
+            Addr(system.aim_ctrl.range_data.end),
             size=range_integrity_bytes,
         )
-        system.crypto_ctrl.range_leaves = AddrRange(
+        system.aim_ctrl.range_leaves = AddrRange(
             Addr(
-                system.crypto_ctrl.range_integrity.start + (non_leaf_bytes)
+                system.aim_ctrl.range_integrity.start + (non_leaf_bytes)
                 & (-1 - (bus_bytes - 1))
             ),
             size=leaf_bytes,
         )
 
-        # configure crypto controller
-        system.crypto_ctrl.bus_bytes = bus_bytes
-        system.crypto_ctrl.counter_bits = args.crypto_counter_bits
-        system.crypto_ctrl.tree_node_bytes = tree_node_bytes
-        system.crypto_ctrl.tree_height = tree_height
+        # configure aim controller
+        system.aim_ctrl.bus_bytes = bus_bytes
+        system.aim_ctrl.counter_bits = args.aim_counter_bits
+        system.aim_ctrl.tree_node_bytes = tree_node_bytes
+        system.aim_ctrl.tree_height = tree_height
         # configure aes unit
-        aes_unit = system.crypto_ctrl.aes_unit
-        aes_unit.aes_enc_cycles = args.crypto_aes_enc_cycles
-        aes_unit.aes_dec_cycles = args.crypto_aes_dec_cycles
-        aes_unit.aes_enc_ii = args.crypto_aes_enc_ii
-        aes_unit.aes_dec_ii = args.crypto_aes_dec_ii
-        aes_unit.aes_block_bits = args.crypto_aes_block_bits
+        aes_unit = system.aim_ctrl.aes_unit
+        aes_unit.aes_enc_cycles = args.aim_aes_enc_cycles
+        aes_unit.aes_dec_cycles = args.aim_aes_dec_cycles
+        aes_unit.aes_enc_ii = args.aim_aes_enc_ii
+        aes_unit.aes_dec_ii = args.aim_aes_dec_ii
+        aes_unit.aes_block_bits = args.aim_aes_block_bits
         # configure mac unit
-        mac_unit = system.crypto_ctrl.mac_unit
-        mac_unit.mac_cycles = args.crypto_mac_cycles
-        mac_unit.mac_ii = args.crypto_mac_ii
-        mac_unit.mac_bits = args.crypto_dmac_bits
+        mac_unit = system.aim_ctrl.mac_unit
+        mac_unit.mac_cycles = args.aim_mac_cycles
+        mac_unit.mac_ii = args.aim_mac_ii
+        mac_unit.mac_bits = args.aim_dmac_bits
 
-        int_trb = system.crypto_ctrl.int_trb
+        int_trb = system.aim_ctrl.int_trb
         int_trb.size = args.int_trb_size
         int_trb.merge_req = args.int_merge_req
         int_trb.defrag_req = args.int_defrag_req
         int_trb.bus_bytes = bus_bytes
-        int_trb.packing_factor = args.crypto_packing_factor
-        int_trb.counter_bits = args.crypto_counter_bits
+        int_trb.packing_factor = args.aim_packing_factor
+        int_trb.counter_bits = args.aim_counter_bits
         int_trb.tree_height = tree_height
         int_trb.tree_node_bytes = tree_node_bytes
-        int_trb.range_integrity = system.crypto_ctrl.range_integrity
-        int_trb.mac_unit.mac_cycles = args.crypto_mac_cycles
-        int_trb.mac_unit.mac_ii = args.crypto_mac_ii
-        int_trb.mac_unit.mac_bits = args.crypto_mac_bits
+        int_trb.range_integrity = system.aim_ctrl.range_integrity
+        int_trb.mac_unit.mac_cycles = args.aim_mac_cycles
+        int_trb.mac_unit.mac_ii = args.aim_mac_ii
+        int_trb.mac_unit.mac_bits = args.aim_mac_bits
 
         # configure metadata cache
         if args.metadata_cache_assoc:
@@ -160,8 +158,8 @@ class MemorySystem:
 
         # update memory ranges
         system.mem_ranges = [
-            system.crypto_ctrl.range_data,
-            system.crypto_ctrl.range_integrity,
+            system.aim_ctrl.range_data,
+            system.aim_ctrl.range_integrity,
         ]
 
     def initialize(system, args):
@@ -196,20 +194,20 @@ class MemorySystem:
         system.membus = SystemXBar()
         system.mem_ctrl.port = system.membus.mem_side_ports
 
-        # configure intermediary crypto controller if specified
+        # configure intermediary aim controller if specified
         if args.memsec:
-            system.crypto_ctrl = CryptoCtrl()
+            system.aim_ctrl = AIMCtrl()
             system.metadata_cache = MetadataCache(
                 size=args.metadata_cache_size
             )
-            MemorySystem.parameterize_crypto_system(args, system)
+            MemorySystem.parameterize_aim(args, system)
             system.metadata_cache.connectCPUSideBusPort(
-                system.crypto_ctrl.int_trb.metadata_cache_side_port
+                system.aim_ctrl.int_trb.metadata_cache_side_port
             )
             system.metadata_cache.connectMemSideBusPort(
                 system.membus.cpu_side_ports
             )
-            system.crypto_ctrl.mem_side_port = system.membus.cpu_side_ports
-            last_level_cache.mem_side = system.crypto_ctrl.cpu_side_port
+            system.aim_ctrl.mem_side_port = system.membus.cpu_side_ports
+            last_level_cache.mem_side = system.aim_ctrl.cpu_side_port
         else:
             last_level_cache.mem_side = system.membus.cpu_side_ports

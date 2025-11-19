@@ -1,4 +1,4 @@
-#include "memsec/crypto_ctrl.hh"
+#include "memsec/aim_ctrl.hh"
 
 #include <cmath>
 #include <cstring>
@@ -6,12 +6,11 @@
 #include "base/logging.hh"
 #include "base/trace.hh"
 #include "base/types.hh"
-#include "crypto_ctrl.hh"
-#include "debug/CryptoCtrl.hh"
+#include "debug/AIMCtrl.hh"
 #include "mem/packet.hh"
 #include "mem/request.hh"
 #include "memsec/aes_unit.hh"
-#include "memsec/crypto_event.hh"
+#include "memsec/aim_event.hh"
 #include "memsec/util.hh"
 #include "sim/clocked_object.hh"
 #include "sim/system.hh"
@@ -19,7 +18,7 @@
 namespace gem5
 {
 
-CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
+AIMCtrl::AIMCtrl(const AIMCtrlParams& params)
     : ClockedObject(params), sys(params.system),
       requestorId(sys->getRequestorId(this)),
       counter_bytes(params.counter_bits / 8),
@@ -36,37 +35,37 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
       stats(this), cpuPort(params.name + ".cpu_side_port", this),
       memPort(params.name + ".mem_side_port", this)
 {
-    DPRINTF(CryptoCtrl, "Created crypto controller with properties\n");
-    DPRINTF(CryptoCtrl, "\t\t\t%d total memory bytes (%f MiB)\n",
+    DPRINTF(AIMCtrl, "Created crypto controller with properties\n");
+    DPRINTF(AIMCtrl, "\t\t\t%d total memory bytes (%f MiB)\n",
         params.range_total.size(),
         (double)params.range_total.size() / 1024.f / 1024.f);
-    DPRINTF(CryptoCtrl, "\t\t\t%d counter bits (%d bytes)\n",
+    DPRINTF(AIMCtrl, "\t\t\t%d counter bits (%d bytes)\n",
         counter_bytes * 8, counter_bytes);
-    DPRINTF(CryptoCtrl,
+    DPRINTF(AIMCtrl,
         "\t\t\t%d integrity tree node bits (%d bytes, %d packing factor, %d "
         "height)\n",
         tree_node_bytes * 8, tree_node_bytes, packing_factor, tree_height);
-    DPRINTF(CryptoCtrl,
+    DPRINTF(AIMCtrl,
         "\t\t\t%s memory region (total, %d address bits required)\n",
         range_total.to_string(),
         std::log2(range_total.end() - range_total.start()));
-    DPRINTF(CryptoCtrl,
+    DPRINTF(AIMCtrl,
         "\t\t\t%s memory region (data, %d address bits required)\n",
         range_data.to_string(),
         std::log2(range_data.end() - range_data.start()));
-    DPRINTF(CryptoCtrl,
+    DPRINTF(AIMCtrl,
         "\t\t\t%s memory region (integrity, %d address bits required)\n",
         range_integrity.to_string(),
         std::log2(range_integrity.end() - range_integrity.start()));
-    DPRINTF(CryptoCtrl,
+    DPRINTF(AIMCtrl,
         "\t\t\t%s memory region (leaves, %d address bits "
         "required)\n",
         range_leaves.to_string(),
         std::log2(range_leaves.end() - range_leaves.start()));
 
     int_trb->register_release_callback(
-        std::bind(&CryptoCtrl::onIntTRBCompletedRequest, this));
-    DPRINTF(CryptoCtrl, "Registered release callback for IntTRB unit\n");
+        std::bind(&AIMCtrl::onIntTRBCompletedRequest, this));
+    DPRINTF(AIMCtrl, "Registered release callback for IntTRB unit\n");
 
     // sanity check
     assert(range_data.size() + range_integrity.size() <= range_total.size());
@@ -84,11 +83,11 @@ CryptoCtrl::CryptoCtrl(const CryptoCtrlParams& params)
 }
 
 Port&
-CryptoCtrl::getPort(const std::string& if_name, PortID idx)
+AIMCtrl::getPort(const std::string& if_name, PortID idx)
 {
     panic_if(idx != InvalidPortID, "This object doesn't support vector ports");
 
-    // this is the name from the Python SimObject declaration (CryptoCtrl.py)
+    // this is the name from the Python SimObject declaration (AIMCtrl.py)
     if (if_name == "mem_side_port") {
         return memPort;
     } else if (if_name == "cpu_side_port") {
@@ -100,7 +99,7 @@ CryptoCtrl::getPort(const std::string& if_name, PortID idx)
 }
 
 void
-CryptoCtrl::startup()
+AIMCtrl::startup()
 {
     // kick off the clock ticks
     // NOTE: don't use tick event, it costs too much performance
@@ -108,14 +107,14 @@ CryptoCtrl::startup()
 }
 
 void
-CryptoCtrl::tick()
+AIMCtrl::tick()
 {
     // NOTE: this method is not used currently, but left in here for anyone
     //       who might want to implement a feature using cycle-level events
     /*
     schedule(tickEvent, clockEdge(Cycles(1)));
     if (cpu_failed_packets > 0 && !int_trb->is_busy()) {
-        DPRINTF(CryptoCtrl, "sending cpu retry request\n");
+        DPRINTF(AIMCtrl, "sending cpu retry request\n");
         cpuPort.sendRetryReq();
         cpu_failed_packets--;
     }
@@ -123,9 +122,9 @@ CryptoCtrl::tick()
 }
 
 bool
-CryptoCtrl::handleRequest(PacketPtr pkt)
+AIMCtrl::handleRequest(PacketPtr pkt)
 {
-    DPRINTF(CryptoCtrl, "handleRequest %s\n", formattedPacket(pkt));
+    DPRINTF(AIMCtrl, "handleRequest %s\n", formattedPacket(pkt));
     // keep track of reads and writes
     if (pkt->isRead())
         stats.totalReads++;
@@ -133,12 +132,12 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         stats.totalWrites++;
 
     panic_if(range_integrity.contains(pkt->getAddr()),
-        "requests to CryptoCtrl are not allowed to fall into the reserved "
+        "requests to AIMCtrl are not allowed to fall into the reserved "
         "integrity region!\n");
 
     // first enqueue integrity tree request in buffer
     if (int_trb->is_busy()) {
-        DPRINTF(CryptoCtrl, "IntTRB is full, refusing request\n");
+        DPRINTF(AIMCtrl, "IntTRB is full, refusing request\n");
         // fail on full queue
         cpu_failed_packets++;
         return false;
@@ -147,7 +146,7 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
     // block reads for queued but as of yet unscheduled writes
     // to prevent read requests from overtaking delayed write requests
     if (auto it = write_queue.find(pkt->getAddr()); it != write_queue.end()) {
-        DPRINTF(CryptoCtrl,
+        DPRINTF(AIMCtrl,
             "request for address 0x%x placed while there is an unresolved "
             "on-going write request\n",
             pkt->getAddr());
@@ -169,7 +168,7 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
         // assume multiples of 64 bytes
         const uint64_t mask = 0xFFFFFFFFFFFFFFFF;
         if (pkt->hasData()) {
-            DPRINTF(CryptoCtrl, "XORing write data at %d\n", pkt->getAddr());
+            DPRINTF(AIMCtrl, "XORing write data at %d\n", pkt->getAddr());
             uint64_t* data = pkt->getPtr<uint64_t>();
             for (int i = 0; i < pkt->getSize() / 8; i++) {
                 *data = (*data) ^ mask;
@@ -192,9 +191,9 @@ CryptoCtrl::handleRequest(PacketPtr pkt)
 }
 
 bool
-CryptoCtrl::handleResponse(PacketPtr pkt)
+AIMCtrl::handleResponse(PacketPtr pkt)
 {
-    DPRINTF(CryptoCtrl, "handleResponse %s\n", formattedPacket(pkt));
+    DPRINTF(AIMCtrl, "handleResponse %s\n", formattedPacket(pkt));
 
     // NOTE: integrity side of things is decoupled
 
@@ -216,27 +215,27 @@ CryptoCtrl::handleResponse(PacketPtr pkt)
 }
 
 void
-CryptoCtrl::handleFunctional(PacketPtr pkt)
+AIMCtrl::handleFunctional(PacketPtr pkt)
 {
     // just pass this on to the memory side to handle for now
     memPort.sendFunctional(pkt);
 }
 
 AddrRangeList
-CryptoCtrl::getAddrRanges() const
+AIMCtrl::getAddrRanges() const
 {
     // return the mem port ranges
     return memPort.getAddrRanges();
 }
 
 void
-CryptoCtrl::sendRangeChange()
+AIMCtrl::sendRangeChange()
 {
     cpuPort.sendRangeChange();
 }
 
 void
-CryptoCtrl::scheduleAESEncryptOp(PacketPtr pkt)
+AIMCtrl::scheduleAESEncryptOp(PacketPtr pkt)
 {
     // we need to mark address as busy so that they cannot compete with
     // concurrent read requests
@@ -244,12 +243,12 @@ CryptoCtrl::scheduleAESEncryptOp(PacketPtr pkt)
     // this would be the correct time to manipulate a packer during a write
     // AESEncrypt(pkt);
     // schedule future event, when the crypto unit finished encrypting
-    schedule(new CryptoWriteEvent(this, pkt),
+    schedule(new AIMWriteEvent(this, pkt),
         aes_unit->get_earliest_enc_ready_time(pkt));
 }
 
 void
-CryptoCtrl::scheduleAESDecryptOp(PacketPtr pkt)
+AIMCtrl::scheduleAESDecryptOp(PacketPtr pkt)
 {
     // if data should be processed, now would be the time to process it
     // AESDecrypt(pkt);
@@ -263,25 +262,25 @@ CryptoCtrl::scheduleAESDecryptOp(PacketPtr pkt)
     */
 
     //schedule(new AESDecryptEvent(this, pkt), clockEdge(delay));
-    schedule(new CryptoReadEvent(this, pkt),
+    schedule(new AIMReadEvent(this, pkt),
         aes_unit->get_earliest_dec_ready_time(pkt));
 }
 
 void
-CryptoCtrl::scheduleMACOp(PacketPtr pkt, DataMACEventType type)
+AIMCtrl::scheduleMACOp(PacketPtr pkt, DataMACEventType type)
 {
     schedule(new DataMACEvent(this, pkt, type),
         mac_unit->get_earliest_ready_time(pkt));
 }
 
 AddrRangeList
-CryptoCtrl::CPUSidePort::getAddrRanges() const
+AIMCtrl::CPUSidePort::getAddrRanges() const
 {
     return owner->getAddrRanges();
 }
 
 bool
-CryptoCtrl::CPUSidePort::sendPacket(PacketPtr pkt)
+AIMCtrl::CPUSidePort::sendPacket(PacketPtr pkt)
 {
     owner->stats.cpuTotalCountSend++;
 
@@ -290,29 +289,29 @@ CryptoCtrl::CPUSidePort::sendPacket(PacketPtr pkt)
         failedPackets.push(pkt);
         ++owner->stats.cpuFailuresCountSend;
     }
-    DPRINTF(CryptoCtrl, "sendPacket %s, success=%d\n", formattedPacket(pkt),
+    DPRINTF(AIMCtrl, "sendPacket %s, success=%d\n", formattedPacket(pkt),
         success);
 
     return success;
 }
 
 bool
-CryptoCtrl::CPUSidePort::hasFailedPackets()
+AIMCtrl::CPUSidePort::hasFailedPackets()
 {
     return failedPackets.size() > 0;
 }
 
 void
-CryptoCtrl::CPUSidePort::recvFunctional(PacketPtr pkt)
+AIMCtrl::CPUSidePort::recvFunctional(PacketPtr pkt)
 {
     // just forward
     return owner->handleFunctional(pkt);
 }
 
 bool
-CryptoCtrl::CPUSidePort::recvTimingReq(PacketPtr pkt)
+AIMCtrl::CPUSidePort::recvTimingReq(PacketPtr pkt)
 {
-    DPRINTF(CryptoCtrl, "recvTimingReq %s\n", formattedPacket(pkt));
+    DPRINTF(AIMCtrl, "recvTimingReq %s\n", formattedPacket(pkt));
     owner->stats.cpuTotalCountRecv++;
 
     // TODO: log sequence here?
@@ -322,7 +321,7 @@ CryptoCtrl::CPUSidePort::recvTimingReq(PacketPtr pkt)
 }
 
 void
-CryptoCtrl::CPUSidePort::recvRespRetry()
+AIMCtrl::CPUSidePort::recvRespRetry()
 {
     bool success = true;
     // use for loop to only process packets currently in queue,
@@ -334,30 +333,30 @@ CryptoCtrl::CPUSidePort::recvRespRetry()
 
         // try to send packet
         success = sendTimingResp(pkt);
-        DPRINTF(CryptoCtrl, "recvRespRetry %s, success=%d\n",
+        DPRINTF(AIMCtrl, "recvRespRetry %s, success=%d\n",
             formattedPacket(pkt), success);
 
         // remove packets which were successfully resent
         if (success)
             failedPackets.pop();
     }
-    DPRINTF(CryptoCtrl, "recvRespRetry %d failed packets in queue\n",
+    DPRINTF(AIMCtrl, "recvRespRetry %d failed packets in queue\n",
         failedPackets.size());
 }
 
 inline void
-CryptoCtrl::MemSidePort::processPacket(PacketPtr pkt)
+AIMCtrl::MemSidePort::processPacket(PacketPtr pkt)
 {
     // NOTE: for now differentiate crypto writes and reads just by checking
     // this field
     if (!pkt->isRead()) {
         // perform crypto write postamble
-        owner->opCryptoWriteCallback(pkt);
+        owner->opAIMWriteCallback(pkt);
     }
 }
 
 bool
-CryptoCtrl::MemSidePort::sendPacket(PacketPtr pkt)
+AIMCtrl::MemSidePort::sendPacket(PacketPtr pkt)
 {
     owner->stats.memTotalCountSend++;
 
@@ -371,15 +370,15 @@ CryptoCtrl::MemSidePort::sendPacket(PacketPtr pkt)
         processPacket(pkt);
     }
 
-    DPRINTF(CryptoCtrl, "sendPacket %s, success=%d, failed queue size=%d\n",
+    DPRINTF(AIMCtrl, "sendPacket %s, success=%d, failed queue size=%d\n",
         formattedPacket(pkt), success, failedPackets.size());
     return success;
 }
 
 bool
-CryptoCtrl::MemSidePort::recvTimingResp(PacketPtr pkt)
+AIMCtrl::MemSidePort::recvTimingResp(PacketPtr pkt)
 {
-    DPRINTF(CryptoCtrl, "recvTimingResp %s\n", formattedPacket(pkt));
+    DPRINTF(AIMCtrl, "recvTimingResp %s\n", formattedPacket(pkt));
     owner->stats.memTotalCountRecv++;
 
     // just forward
@@ -387,7 +386,7 @@ CryptoCtrl::MemSidePort::recvTimingResp(PacketPtr pkt)
 }
 
 void
-CryptoCtrl::MemSidePort::recvReqRetry()
+AIMCtrl::MemSidePort::recvReqRetry()
 {
     // use for loop to only process packets currently in queue,
     // ignorning newly added failed packets
@@ -402,7 +401,7 @@ CryptoCtrl::MemSidePort::recvReqRetry()
 
         // try to send packet
         success = sendTimingReq(pkt);
-        DPRINTF(CryptoCtrl, "recvReqRetry: %s, success=%d\n",
+        DPRINTF(AIMCtrl, "recvReqRetry: %s, success=%d\n",
             formattedPacket(pkt), success);
 
         if (success) {
@@ -412,7 +411,7 @@ CryptoCtrl::MemSidePort::recvReqRetry()
         }
     }
 
-    DPRINTF(CryptoCtrl, "recvReqRetry: %d failed packets in queue\n",
+    DPRINTF(AIMCtrl, "recvReqRetry: %d failed packets in queue\n",
         failedPackets.size());
 
     while (successful_packets.size() > 0) {
@@ -422,16 +421,16 @@ CryptoCtrl::MemSidePort::recvReqRetry()
 }
 
 void
-CryptoCtrl::MemSidePort::recvRangeChange()
+AIMCtrl::MemSidePort::recvRangeChange()
 {
     owner->sendRangeChange();
 }
 
 void
-CryptoCtrl::onIntTRBCompletedRequest()
+AIMCtrl::onIntTRBCompletedRequest()
 {
     if (cpu_failed_packets > 0) {
-        DPRINTF(CryptoCtrl,
+        DPRINTF(AIMCtrl,
             "onIntTRBCompletedRequest: %d failed packets, retrying\n",
             cpu_failed_packets);
         cpu_failed_packets--;
@@ -440,28 +439,28 @@ CryptoCtrl::onIntTRBCompletedRequest()
 }
 
 void
-CryptoCtrl::opCryptoWrite(PacketPtr pkt)
+AIMCtrl::opAIMWrite(PacketPtr pkt)
 {
     // we are handling failed packets gracefully in the memport implementation
     memPort.sendPacket(pkt);
 }
 
 void
-CryptoCtrl::opCryptoWriteCallback(PacketPtr pkt)
+AIMCtrl::opAIMWriteCallback(PacketPtr pkt)
 {
     //panic_if(!success, "mem port send packet is not allowed to fail\n");
     scheduleMACOp(pkt, DataMACEventType::DataMACUpdate);
     // free up address again
     write_queue.erase(pkt->getAddr());
-    DPRINTF(CryptoCtrl,
-        "opCryptoWriteCallback: reduced write queue to %d entries\n",
+    DPRINTF(AIMCtrl,
+        "opAIMWriteCallback: reduced write queue to %d entries\n",
         write_queue.size());
 
     onIntTRBCompletedRequest();
 }
 
 void
-CryptoCtrl::opCryptoRead(PacketPtr pkt)
+AIMCtrl::opAIMRead(PacketPtr pkt)
 {
     // TODO: should we block sendpacket until MAC unit is available?
     // for now ignore return value
@@ -472,16 +471,16 @@ CryptoCtrl::opCryptoRead(PacketPtr pkt)
 }
 
 void
-CryptoCtrl::opDataMACCheck(PacketPtr pkt)
+AIMCtrl::opDataMACCheck(PacketPtr pkt)
 {
-    DPRINTF(CryptoCtrl, "opDataMACCheck: completed\n");
+    DPRINTF(AIMCtrl, "opDataMACCheck: completed\n");
     // theoretically we would check the MAC here
 }
 
 void
-CryptoCtrl::opDataMACUpdate(PacketPtr pkt)
+AIMCtrl::opDataMACUpdate(PacketPtr pkt)
 {
-    DPRINTF(CryptoCtrl, "opDataMACUpdate: completed\n");
+    DPRINTF(AIMCtrl, "opDataMACUpdate: completed\n");
     // theoretically we would update the MAC here
 }
 

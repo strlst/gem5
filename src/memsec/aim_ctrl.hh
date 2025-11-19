@@ -1,5 +1,5 @@
-#ifndef __MEMSEC_CRYPTO_CTRL_HH__
-#define __MEMSEC_CRYPTO_CTRL_HH__
+#ifndef __MEMSEC_AIM_CTRL_HH__
+#define __MEMSEC_AIM_CTRL_HH__
 
 #include <cstdint>
 #include <queue>
@@ -14,7 +14,7 @@
 #include "memsec/aes_unit.hh"
 #include "memsec/int_tree.hh"
 #include "memsec/mac_unit.hh"
-#include "params/CryptoCtrl.hh"
+#include "params/AIMCtrl.hh"
 #include "sim/clocked_object.hh"
 
 namespace gem5
@@ -38,12 +38,12 @@ struct TreeCheckRequest
 /**
  * A very simple controller.
  */
-class CryptoCtrl : public ClockedObject
+class AIMCtrl : public ClockedObject
 {
   public:
     /** constructor
      */
-    CryptoCtrl(const CryptoCtrlParams& params);
+    AIMCtrl(const AIMCtrlParams& params);
 
     /**
      * Get a port with a given name and index. This is used at
@@ -190,18 +190,18 @@ class CryptoCtrl : public ClockedObject
     class MetadataCacheSidePort : public RequestPort
     {
       private:
-        CryptoCtrl* owner;
+        AIMCtrl* owner;
 
         // store packets for retries
         std::queue<PacketPtr> failedPackets;
 
       public:
-        MetadataCacheSidePort(const std::string& name, CryptoCtrl* owner)
+        MetadataCacheSidePort(const std::string& name, AIMCtrl* owner)
             : RequestPort(name), owner(owner)
         {
         }
 
-        // called by the crypto controller
+        // called by the AIM controller
         bool sendPacket(PacketPtr pkt);
 
       protected:
@@ -215,18 +215,18 @@ class CryptoCtrl : public ClockedObject
     class CPUSidePort : public ResponsePort
     {
       private:
-        CryptoCtrl* owner;
+        AIMCtrl* owner;
 
         // store packets for retries
         std::queue<PacketPtr> failedPackets;
 
       public:
-        CPUSidePort(const std::string& name, CryptoCtrl* owner)
+        CPUSidePort(const std::string& name, AIMCtrl* owner)
             : ResponsePort(name), owner(owner)
         {
         }
 
-        // called by the crypto controller
+        // called by the AIM controller
         bool sendPacket(PacketPtr pkt);
         bool hasFailedPackets();
         AddrRangeList getAddrRanges() const override;
@@ -247,14 +247,14 @@ class CryptoCtrl : public ClockedObject
     class MemSidePort : public RequestPort
     {
       private:
-        /// The object that owns this object (CryptoCtrl)
-        CryptoCtrl* owner;
+        /// The object that owns this object (AIMCtrl)
+        AIMCtrl* owner;
 
         // store packet for retries
         std::queue<PacketPtr> failedPackets;
 
       public:
-        MemSidePort(const std::string& name, CryptoCtrl* owner)
+        MemSidePort(const std::string& name, AIMCtrl* owner)
             : RequestPort(name), owner(owner)
         {
         }
@@ -307,8 +307,8 @@ class CryptoCtrl : public ClockedObject
      *
      * @param pkt requesting packet
      */
-    void opCryptoWrite(PacketPtr pkt);
-    void opCryptoWriteCallback(PacketPtr pkt);
+    void opAIMWrite(PacketPtr pkt);
+    void opAIMWriteCallback(PacketPtr pkt);
 
     /**
      * If data sent from the memory side needs to be decrypted, emulate
@@ -316,7 +316,7 @@ class CryptoCtrl : public ClockedObject
      *
      * @param pkt requesting packet
      */
-    void opCryptoRead(PacketPtr pkt);
+    void opAIMRead(PacketPtr pkt);
 
     /**
      * In case a data node has been decrypted, perform MAC computation to
@@ -338,4 +338,4 @@ class CryptoCtrl : public ClockedObject
 
 } // namespace gem5
 
-#endif // __MEMSEC_CRYPTO_CTRL_HH__
+#endif // __MEMSEC_AIM_CTRL_HH__

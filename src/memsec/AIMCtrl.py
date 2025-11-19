@@ -70,10 +70,10 @@ class IntTRB(SimObject):
     metadata_cache_side_port = RequestPort("metadata cache side port")
 
 
-class CryptoCtrl(ClockedObject):
-    type = "CryptoCtrl"
-    cxx_header = "memsec/crypto_ctrl.hh"
-    cxx_class = "gem5::CryptoCtrl"
+class AIMCtrl(ClockedObject):
+    type = "AIMCtrl"
+    cxx_header = "memsec/aim_ctrl.hh"
+    cxx_class = "gem5::AIMCtrl"
 
     # reference to parent system
     system = Param.System(Parent.any, "system object")
