@@ -46,12 +46,8 @@ class IntTRB : public SimObject
     std::list<IntTreeReq> queue;
     // whether to simulate request merging strategy
     bool merge_requests;
-    uint64_t merged_requests;
-    uint64_t merged_nodes;
     // whether to simulate request defragmentation strategy
     bool defragment_requests;
-    uint64_t defragmented_requests;
-    uint64_t defragmented_nodes;
 
     // identify requests
     uint64_t serial = 0;
@@ -104,8 +100,10 @@ class IntTRB : public SimObject
         statistics::Scalar mdcacheFailuresCountSend;
         statistics::Scalar mdcacheRetryCountSend;
         statistics::Scalar fullyMergedRequests;
-        statistics::Scalar mergeRate;
-        statistics::Scalar defragRate;
+        statistics::Scalar mergedRequests;
+        statistics::Scalar mergedRequestNodes;
+        statistics::Scalar defragmentedRequests;
+        statistics::Scalar defragmentedRequestNodes;
         PktStats(Group* parent)
             : Group(parent),
               ADD_STAT(enqueued, statistics::units::Count::get(),
@@ -121,10 +119,15 @@ class IntTRB : public SimObject
                   "amount of request packets sent as a result of a retry"),
               ADD_STAT(fullyMergedRequests, statistics::units::Count::get(),
                   "amount of fully merged requests"),
-              ADD_STAT(mergeRate, statistics::units::Count::get(),
-                  "mean value of merged nodes per request"),
-              ADD_STAT(defragRate, statistics::units::Count::get(),
-                  "mean value of defragmented nodes per request")
+              ADD_STAT(mergedRequests, statistics::units::Count::get(),
+                  "amount of merged requests"),
+              ADD_STAT(mergedRequestNodes, statistics::units::Count::get(),
+                  "amount of merged request nodes"),
+              ADD_STAT(defragmentedRequests, statistics::units::Count::get(),
+                  "amount of defragmented requests"),
+              ADD_STAT(defragmentedRequestNodes,
+                  statistics::units::Count::get(),
+                  "amount of defragmented request nodes")
         {
         }
     } stats;

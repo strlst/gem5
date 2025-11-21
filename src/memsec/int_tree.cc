@@ -159,9 +159,8 @@ IntTRB::merge_from_queue()
                     DPRINTF(IntTRB,
                         "merged %d nodes from request %ld into %ld\n", merged,
                         left->serial, right->serial);
-                merged_requests++;
-                merged_nodes += merged;
-                stats.mergeRate = merged_nodes / merged_requests;
+                stats.mergedRequests++;
+                stats.mergedRequestNodes += merged;
             }
         }
         // sweep queue again to delete fully merged (empty) requests
@@ -188,10 +187,10 @@ IntTRB::defragment_from_queue()
         auto left = queue.begin();
         auto right = std::next(left);
         while (right != queue.end()) {
-            if (left->nodes.size() + right->nodes.size() <= tree_height) {
-                defragmented_requests++;
-                defragmented_nodes += right->nodes.size();
-                stats.defragRate = defragmented_nodes / defragmented_requests;
+            if (left->nodes.size() + right->nodes.size() <= tree_height &&
+                left->is_read == right->is_read) {
+                stats.defragmentedRequests++;
+                stats.defragmentedRequestNodes += right->nodes.size();
                 DPRINTF(IntTRB,
                     "defragmenting requests %ld (%ld elements) and %ld (%ld "
                     "elements)\n",

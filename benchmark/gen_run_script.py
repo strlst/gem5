@@ -44,13 +44,14 @@ def generate_configurations():
             "big_buff",
             "big_mdcache",
             "no_delay",
+            "long_ii",
         ],
-        "aim-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 1],
-        "aim-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 1],
-        "aim-aes-enc-ii": [20, 20, 20, 20, 20, 20, 1],
-        "aim-aes-dec-ii": [20, 20, 20, 20, 20, 20, 1],
-        "aim-mac-cycles": [40, 40, 40, 40, 40, 40, 1],
-        "aim-mac-ii": [10, 10, 10, 10, 10, 10, 1],
+        "aim-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 1, 80],
+        "aim-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 1, 80],
+        "aim-aes-enc-ii": [10, 10, 10, 10, 10, 10, 1, 80],
+        "aim-aes-dec-ii": [10, 10, 10, 10, 10, 10, 1, 80],
+        "aim-mac-cycles": [40, 40, 40, 40, 40, 40, 1, 40],
+        "aim-mac-ii": [5, 5, 5, 5, 5, 5, 1, 40],
         "metadata-cache-size": [
             "32KiB",
             "32KiB",
@@ -59,11 +60,12 @@ def generate_configurations():
             "32KiB",
             "4096KiB",
             "32KiB",
+            "32KiB",
         ],
-        "metadata-cache-assoc": [8, 8, 8, 8, 8, 32, 8],
-        "int-trb-size": [1, 4, 4, 4, 128, 1, 1],
-        "int-merge-req": [2 <= i <= 4 for i in range(7)],
-        "int-defrag-req": [3 <= i <= 4 for i in range(7)],
+        "metadata-cache-assoc": [8, 8, 8, 8, 8, 32, 8, 8],
+        "int-trb-size": [1, 16, 16, 16, 128, 1, 1, 1],
+        "int-merge-req": [2 <= i <= 4 for i in range(8)],
+        "int-defrag-req": [3 <= i <= 4 for i in range(8)],
     }
 
     configurations = [
@@ -76,15 +78,25 @@ def generate_configurations():
     yield from configurations
 
 
-def print_configurations():
-    print(f"configuration information:")
-    for i, conf in enumerate(generate_configurations()):
-        print(f"  {conf["profile"]} {conf}")
+def print_configurations(table=False):
+    if table:
+        for i, conf in enumerate(generate_configurations()):
+            if i == 0:
+                print(";".join(key for key in conf))
+            print(";".join(str(conf[key]) for key in conf))
+    else:
+        print(f"configuration information:")
+        for i, conf in enumerate(generate_configurations()):
+            print(f"  {conf["profile"]} {conf}")
 
 
 def main(args):
     if args.list_configurations:
         print_configurations()
+        return
+
+    if args.show_configuration_table:
+        print_configurations(table=True)
         return
 
     print("note: this script is meant to be run in the gem5 root folder")
@@ -204,6 +216,12 @@ if __name__ == "__main__":
         "--out-path",
         default="run-spec-benchmarks.sh",
         help="Output file path to write resulting shell script to",
+    )
+    parser.add_argument(
+        "-t",
+        "--show-configuration-table",
+        action=argparse.BooleanOptionalAction,
+        help="Show a table of all configurations only",
     )
     parser.add_argument(
         "-l",

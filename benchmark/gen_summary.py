@@ -177,36 +177,44 @@ def bin_schedule(hits, fname):
             hits[binned] = hits.get(binned, 0) + 1
 
 
-def analyze_imbalance(overhead):
-    # NOTE: imbalance is defined as min(k, l)/max(k, l) over the access counts of any two regions of memory
+def analyze_accesses(accesses):
+    # NOTE: imbalance(k, l) is defined as l / (k + l) over the access counts
+    # of any two regions of memory
     # for instance, we can compare region
     #   region(k)=[0, 0x17ff]
     # against region
     #   region(l)=[0x1800, 0x1fff]
-    print(overhead)
-    data = dict()
-    for benchmark in sorted(overhead):
+    # NOTE: overhead(k, l) is defined as (k + l) / k
+    imbalances = dict()
+    overheads = dict()
+    for benchmark in sorted(accesses):
         # prepare dict for plotting later
         experiment = str_before_n_th_index(benchmark.lstrip("result/"), "_", 3)
         arch = str_after_n_th_index(benchmark, "_", 5)
-        if experiment not in data:
-            data[experiment] = dict()
+        if experiment not in imbalances:
+            imbalances[experiment] = dict()
+        if experiment not in overheads:
+            overheads[experiment] = dict()
 
         # get access counts and calculate imbalance
-        hits = overhead[benchmark]
+        hits = accesses[benchmark]
         keys = list(hits.keys())
         for i, k in enumerate(keys):
             for l in keys[i + 1 :]:
-                imbalance = round(
-                    min(hits[k], hits[l]) * 100 / max(hits[k], hits[l]), 2
-                )
+                imbalance = round(hits[l] * 100 / (hits[k] + hits[l]), 2)
                 print(
-                    f"{benchmark}: imbalance({k}, {l}) = {min(hits[k], hits[l])} / {max(hits[k], hits[l])} = {imbalance}%"
+                    f"{benchmark}: imbalance(@{k}, @{l}) = {hits[l]} / ({hits[k]} + {hits[l]}) = {imbalance}%"
                 )
-                data[experiment][arch] = imbalance
+                overhead = round((hits[k] + hits[l]) * 100 / hits[k], 2)
+                print(
+                    f"{benchmark}: overhead(@{k}, @{l}) = ({hits[k]} + {hits[l]}) / {hits[k]} = {overhead}%"
+                )
+                imbalances[experiment][arch] = imbalance
+                overheads[experiment][arch] = overhead
 
     # finally plot and save data
-    plot_imbalance(data)
+    plot_accesses(imbalances, "Imbalance")
+    plot_accesses(overheads, "Overhead")
 
 
 def str_after_n_th_index(string, char, n):
@@ -234,7 +242,7 @@ def prepare_df(df):
     return df
 
 
-def plot_imbalance(data):
+def plot_accesses(data, title):
     sns.set(style="whitegrid")
     plt.rcParams.update(
         {
@@ -272,14 +280,15 @@ def plot_imbalance(data):
     # plt.ylim(0, 100)
     plt.xticks(rotation=30, ha="right")
     plt.xlabel("Benchmark")
-    plt.ylabel("Integrity Tree Memory Traffic Overhead [\\%]")
-    plt.title("Overhead of different configurations across benchmarks")
+    plt.ylabel(f"Integrity Tree Memory Traffic {title} [\\%]")
+    plt.title(f"{title} of different configurations across benchmarks")
     plt.legend(
         title="Configuration", bbox_to_anchor=(1.05, 1), loc="upper left"
     )
     plt.tight_layout()
 
-    filename = os.path.join("plots", f"dramsim3-schedule-imbalance.png")
+    lower_title = title.lower()
+    filename = os.path.join("plots", f"dramsim3-schedule-{lower_title}.png")
     plt.savefig(filename, dpi=300, bbox_inches="tight")
     print(f"saved imbalance figure to file {filename}")
 
@@ -296,7 +305,11 @@ def plot_stat_line(df, stat, title, simulator):
         }
     )
 
-    order = df["benchmark"].unique()
+    # order x-axis by mean of stat (introduces non-consistent)
+    # benchmark order!
+    # agg = df.groupby("benchmark")[stat].mean()
+    # ordered = agg.sort_values().index.tolist()
+    # df = pd.concat([df[df["benchmark"] == b] for b in ordered], ignore_index=True)
 
     plt.figure(figsize=(12, 8))
     ax = sns.lineplot(
@@ -353,10 +366,34 @@ def plot_stat_bar(df, stat, title, simulator):
     plt.close()
 
 
+def list_archs():
+    archs = set()
+    for root, dirs, files in os.walk("result"):
+        if (
+            "dramsim3.txt" not in files
+            or "stats.txt" not in files
+            or "dramsim3.schedule.txt" not in files
+        ):
+            continue
+        archs.add(str_after_n_th_index(root, "_", 5))
+    for arch in archs:
+        print(arch)
+
+
 def main(args):
     statistics = dict()
-    overhead = dict()
+    accesses = dict()
+
+    if args.list_architectures:
+        list_archs()
+        return
+
+    if args.filter:
+        whitelist = args.filter.split(",")
+        print(whitelist)
+
     for root, dirs, files in os.walk("result"):
+        # only include paths with results
         if (
             "dramsim3.txt" not in files
             or "stats.txt" not in files
@@ -364,9 +401,19 @@ def main(args):
         ):
             print(f"skipping analysis of {root}")
             continue
+
+        # skip architectures not included in whitelist
+        if args.filter:
+            arch = str_after_n_th_index(root, "_", 5)
+            if arch not in whitelist:
+                print(f"skipping non-whitelisted architecture {arch}")
+                continue
+
         # print(root, dirs, files)
         statistics[root] = dict()
-        overhead[root] = dict()
+        accesses[root] = dict()
+
+        # dramsim3 analysis branch
         if not args.skip_statistics and "dramsim3.txt" in files:
             analyze(
                 statistics[root],
@@ -375,6 +422,8 @@ def main(args):
                 dramsim3_fields,
                 dramsim3_split,
             )
+
+        # gem5 analysis branch
         if not args.skip_statistics and "stats.txt" in files:
             analyze(
                 statistics[root],
@@ -383,9 +432,11 @@ def main(args):
                 gem5_fields,
                 gem5_split,
             )
+
+        # extra schedule/overhead analysis
         if not args.skip_imbalance and "dramsim3.schedule.txt" in files:
             bin_schedule(
-                overhead[root],
+                accesses[root],
                 os.path.join(root, "dramsim3.schedule.txt"),
             )
 
@@ -396,7 +447,7 @@ def main(args):
         summarize_statistics(statistics)
 
     if not args.skip_imbalance:
-        analyze_imbalance(overhead)
+        analyze_accesses(accesses)
 
 
 if __name__ == "__main__":
@@ -417,6 +468,17 @@ if __name__ == "__main__":
         "--skip-imbalance",
         action=argparse.BooleanOptionalAction,
         help="Run only imbalance analysis on dramsim3 schedule files",
+    )
+    parser.add_argument(
+        "-l",
+        "--list-architectures",
+        action=argparse.BooleanOptionalAction,
+        help="List architectures that are analyzed and plotted",
+    )
+    parser.add_argument(
+        "-f",
+        "--filter",
+        help="Filter architectures by name (comma-separated, e.g. no_memsec,memsec_basic)",
     )
     parser.add_argument(
         "-d",
