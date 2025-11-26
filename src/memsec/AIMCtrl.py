@@ -9,6 +9,7 @@ class AESUnit(SimObject):
     cxx_header = "memsec/aes_unit.hh"
     cxx_class = "gem5::AESUnit"
 
+    aes_unit_count = Param.Int(1, "available AES units")
     aes_enc_cycles = Param.Cycles(
         80, "AES-CTR encryption operation cycle delay per block"
     )
@@ -29,6 +30,7 @@ class MACUnit(SimObject):
     cxx_header = "memsec/mac_unit.hh"
     cxx_class = "gem5::MACUnit"
 
+    mac_unit_count = Param.Int(1, "available AES units")
     mac_bits = Param.Int(64, "MAC resulting size in bits")
     dmac_bits = Param.Int(64, "Data MAC resulting size in bits")
     mac_cycles = Param.Cycles(40, "MAC operation cycle delay per block")

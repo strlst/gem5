@@ -12,8 +12,10 @@ namespace gem5
 class AESUnit : public SimObject
 {
   private:
+    // how many AES processing units are in this unit
+    uint8_t count;
     // storing earliest mac ready times
-    Tick aes_enc_ready, aes_dec_ready;
+    std::vector<Tick> aes_ready;
     // aes request dimensioning
     uint64_t aes_block_bits, aes_block_bytes;
     // aes timing information

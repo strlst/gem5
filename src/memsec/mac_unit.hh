@@ -12,8 +12,10 @@ namespace gem5
 class MACUnit : public SimObject
 {
   private:
+    // how many MAC processing units are in this unit
+    uint8_t count;
     // storing earliest aes ready times
-    Tick mac_ready;
+    std::vector<Tick> mac_ready;
     // mac request dimensioning
     uint64_t mac_bits, mac_bytes;
     // mac timing information

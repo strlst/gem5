@@ -37,6 +37,7 @@ def generate_configurations():
     # saves spelling each parameter for each configuration
     aim_params = {
         "profile": [
+            "none",
             "basic",
             "buff",
             "merge",
@@ -44,15 +45,21 @@ def generate_configurations():
             "big_buff",
             "big_mdcache",
             "no_delay",
-            "long_ii",
+            "short_ii",
+            "aes_units",
+            "full",
         ],
-        "aim-aes-enc-cycles": [80, 80, 80, 80, 80, 80, 1, 80],
-        "aim-aes-dec-cycles": [80, 80, 80, 80, 80, 80, 1, 80],
-        "aim-aes-enc-ii": [10, 10, 10, 10, 10, 10, 1, 80],
-        "aim-aes-dec-ii": [10, 10, 10, 10, 10, 10, 1, 80],
-        "aim-mac-cycles": [40, 40, 40, 40, 40, 40, 1, 40],
-        "aim-mac-ii": [5, 5, 5, 5, 5, 5, 1, 40],
+        "memsec": [False if i == 0 else True for i in range(11)],
+        "aim-aes-units": [0, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4],
+        "aim-aes-enc-cycles": [0, 80, 80, 80, 80, 80, 80, 1, 80, 80, 80],
+        "aim-aes-dec-cycles": [0, 80, 80, 80, 80, 80, 80, 1, 80, 80, 80],
+        "aim-aes-enc-ii": [0, 80, 80, 80, 80, 80, 80, 1, 10, 80, 10],
+        "aim-aes-dec-ii": [0, 80, 80, 80, 80, 80, 80, 1, 10, 80, 10],
+        "aim-mac-units": [0, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4],
+        "aim-mac-cycles": [0, 40, 40, 40, 40, 40, 40, 1, 40, 40, 40],
+        "aim-mac-ii": [0, 40, 40, 40, 40, 40, 40, 1, 5, 40, 5],
         "metadata-cache-size": [
+            "0KiB",
             "32KiB",
             "32KiB",
             "32KiB",
@@ -61,11 +68,13 @@ def generate_configurations():
             "4096KiB",
             "32KiB",
             "32KiB",
+            "32KiB",
+            "32KiB",
         ],
-        "metadata-cache-assoc": [8, 8, 8, 8, 8, 32, 8, 8],
-        "int-trb-size": [1, 16, 16, 16, 128, 1, 1, 1],
-        "int-merge-req": [2 <= i <= 4 for i in range(8)],
-        "int-defrag-req": [3 <= i <= 4 for i in range(8)],
+        "metadata-cache-assoc": [0, 8, 8, 8, 8, 8, 32, 8, 8, 8, 8],
+        "int-trb-size": [0, 1, 16, 16, 16, 128, 1, 1, 1, 1, 16],
+        "int-merge-req": [3 <= i <= 5 or i == 9 for i in range(11)],
+        "int-defrag-req": [4 <= i <= 5 or i == 9 for i in range(11)],
     }
 
     configurations = [
@@ -169,6 +178,7 @@ def main(args):
 
     print_configurations()
 
+    parallelized = 0
     # for now just print make commands instead of actually calling make
     with open(args.out_path, "w") as out_file:
         out_file.write("#!/bin/sh -x\n")
@@ -182,6 +192,9 @@ def main(args):
                     f"{bench}_{run_id}_{suffix}_memsec_{conf['profile']}",
                 )
                 # not the most elegant solution, but it works
+                parallelized += 1
+                parallelize = "&" if parallelized < args.parallel_jobs else ""
+                parallelized %= args.parallel_jobs
                 aim_params = " ".join(
                     [
                         (
@@ -193,16 +206,9 @@ def main(args):
                         if k != "profile"
                     ]
                 )
-                final_cmd = f'mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=memsec GEM5_CONFIG_AIM_PERF="{aim_params}" 2>&1 > {outdir}/log &'
+                final_cmd = f'mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} GEM5_CONFIG_AIM_PERF="{aim_params}" 2>&1 > {outdir}/log {parallelize}'
                 out_file.write(f"{final_cmd}\n")
-            outdir = os.path.join(
-                "result",
-                f"{bench}_{run_id}_{suffix}_no_memsec",
-            )
-            # final_cmd = f"mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=no-memsec 2>&1 > {outdir}/log &"
-            # only parallelize up to level of same bench
-            final_cmd = f"mkdir -p {outdir}; time make spec SPECOUTDIR={outdir} SPECCMD={cmd}{extras} MEMSEC=no-memsec 2>&1 > {outdir}/log"
-            out_file.write(f"{final_cmd}\n")
+        out_file.write(f"echo; echo 'finished all jobs'\n")
         mode = os.stat(args.out_path).st_mode
         mode |= (mode & 0o444) >> 2
         os.chmod(args.out_path, mode)
@@ -234,6 +240,13 @@ if __name__ == "__main__":
         "--dry",
         action=argparse.BooleanOptionalAction,
         help="List commands to be run without running them",
+    )
+    parser.add_argument(
+        "-p",
+        "--parallel-jobs",
+        default=10,
+        type=int,
+        help="Amount of jobs to run in parallel when running benchmark script",
     )
     args = parser.parse_args()
     main(args)

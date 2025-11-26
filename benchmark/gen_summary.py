@@ -307,9 +307,11 @@ def plot_stat_line(df, stat, title, simulator):
 
     # order x-axis by mean of stat (introduces non-consistent)
     # benchmark order!
-    # agg = df.groupby("benchmark")[stat].mean()
-    # ordered = agg.sort_values().index.tolist()
-    # df = pd.concat([df[df["benchmark"] == b] for b in ordered], ignore_index=True)
+    agg = df.groupby("benchmark")[stat].mean()
+    ordered = agg.sort_values().index.tolist()
+    df = pd.concat(
+        [df[df["benchmark"] == b] for b in ordered], ignore_index=True
+    )
 
     plt.figure(figsize=(12, 8))
     ax = sns.lineplot(

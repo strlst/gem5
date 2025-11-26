@@ -122,6 +122,7 @@ class MemorySystem:
         system.aim_ctrl.tree_height = tree_height
         # configure aes unit
         aes_unit = system.aim_ctrl.aes_unit
+        aes_unit.aes_unit_count = args.aim_aes_units
         aes_unit.aes_enc_cycles = args.aim_aes_enc_cycles
         aes_unit.aes_dec_cycles = args.aim_aes_dec_cycles
         aes_unit.aes_enc_ii = args.aim_aes_enc_ii
@@ -129,6 +130,7 @@ class MemorySystem:
         aes_unit.aes_block_bits = args.aim_aes_block_bits
         # configure mac unit
         mac_unit = system.aim_ctrl.mac_unit
+        mac_unit.mac_unit_count = args.aim_mac_units
         mac_unit.mac_cycles = args.aim_mac_cycles
         mac_unit.mac_ii = args.aim_mac_ii
         mac_unit.mac_bits = args.aim_dmac_bits
@@ -143,6 +145,7 @@ class MemorySystem:
         int_trb.tree_height = tree_height
         int_trb.tree_node_bytes = tree_node_bytes
         int_trb.range_integrity = system.aim_ctrl.range_integrity
+        int_trb.mac_unit.mac_unit_count = args.aim_mac_units
         int_trb.mac_unit.mac_cycles = args.aim_mac_cycles
         int_trb.mac_unit.mac_ii = args.aim_mac_ii
         int_trb.mac_unit.mac_bits = args.aim_mac_bits

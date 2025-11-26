@@ -79,6 +79,12 @@ def add_custom_args(parser):
         help="flag to enable/disable memory security subsystem used for confidentiality and integrity",
     )
     parser.add_argument(
+        "--aim-aes-units",
+        default=1,
+        type=int,
+        help="AES unit count (default: 1)",
+    )
+    parser.add_argument(
         "--aim-aes-block-bits",
         default=128,
         type=int,
@@ -108,6 +114,12 @@ def add_custom_args(parser):
         default=216,
         type=int,
         help="AES decryption initiation interval in cycles (default: 216)",
+    )
+    parser.add_argument(
+        "--aim-mac-units",
+        default=1,
+        type=int,
+        help="MAC unit count (default: 1)",
     )
     parser.add_argument(
         "--aim-mac-cycles",
