@@ -139,6 +139,7 @@ class MemorySystem:
         int_trb.size = args.int_trb_size
         int_trb.merge_req = args.int_merge_req
         int_trb.defrag_req = args.int_defrag_req
+        int_trb.par_dispatch = args.int_parallel_dispatch
         int_trb.bus_bytes = bus_bytes
         int_trb.packing_factor = args.aim_packing_factor
         int_trb.counter_bits = args.aim_counter_bits

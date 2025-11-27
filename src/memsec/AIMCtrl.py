@@ -59,6 +59,9 @@ class IntTRB(SimObject):
         "whether to defragment merged int requests in buffer (depends on "
         "`merge_req`)",
     )
+    par_dispatch = Param.Bool(
+        False, "whether to dispatch requests in buffer in parallel"
+    )
     bus_bytes = Param.Int(64, "bus size in bytes")
     packing_factor = Param.Int(
         8, "amount of counters which form one node (or MAC)"

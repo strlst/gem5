@@ -161,10 +161,12 @@ def summarize_statistics(statistics):
 
     df_gem5 = prepare_df(pd.DataFrame(data["by-gem5"]))
     for stat in gem5_fields:
-        plot_stat_line(df_gem5, stat, descriptions[stat], "gem5")
+        plot_stat_bar(df_gem5, stat, descriptions[stat], "gem5")
+        # plot_stat_line(df_gem5, stat, descriptions[stat], "gem5")
     df_dramsim3 = prepare_df(pd.DataFrame(data["by-dramsim3"]["channel0"]))
     for stat in dramsim3_fields:
-        plot_stat_line(df_dramsim3, stat, descriptions[stat], "dramsim3")
+        plot_stat_bar(df_dramsim3, stat, descriptions[stat], "dramsim3")
+        # plot_stat_line(df_dramsim3, stat, descriptions[stat], "dramsim3")
 
 
 def bin_schedule(hits, fname):

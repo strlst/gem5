@@ -185,6 +185,12 @@ def add_custom_args(parser):
         "strategy for previously merged requests "
         "(depends on `--int-merge-req`, default=False)",
     )
+    parser.add_argument(
+        "--int-parallel-dispatch",
+        action=argparse.BooleanOptionalAction,
+        help="Whether to apply more advanced dispatch logic for integrity "
+        "tree requests (default=False)",
+    )
 
 
 def create_system(args):

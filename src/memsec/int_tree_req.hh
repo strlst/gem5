@@ -8,6 +8,7 @@
 
 #include "base/logging.hh"
 #include "base/types.hh"
+#include "mem/packet.hh"
 
 namespace gem5
 {
@@ -19,6 +20,7 @@ struct IntTreeReqNode
 {
     Addr address;
     Diffs diffs;
+    PacketId id{};
     bool completed = false;
 
     IntTreeReqNode(Addr address, uint8_t offset) : address(address)
@@ -26,12 +28,12 @@ struct IntTreeReqNode
         diffs[offset] = 1;
     }
 
-    bool complete(Addr address)
+    bool complete_by_id(PacketId id)
     {
         // we want to return true only when we mark this request complete for
         // the first time, subsequent times return false
         // touching this code is likely unwise
-        return !completed && (completed = address == this->address);
+        return !completed && (completed = id == this->id);
     }
 };
 
@@ -71,10 +73,22 @@ struct IntTreeReq
         nodes.emplace_back(IntTreeReqNode(node_address, node_offset));
     }
 
-    bool complete(Addr node_address)
+    void update_packet_id(PacketId old_id, PacketId new_id)
     {
         for (auto& node : nodes) {
-            if (node.complete(node_address)) {
+            if (node.id == old_id) {
+                node.id = new_id;
+                return;
+            }
+        }
+        panic("could not find packet id %ld in request %s\n", old_id,
+            to_string());
+    }
+
+    bool complete_by_id(PacketId id)
+    {
+        for (auto& node : nodes) {
+            if (node.complete_by_id(id)) {
                 completed_layers++;
                 return true;
             }
@@ -82,24 +96,24 @@ struct IntTreeReq
         return false;
     }
 
-    bool contains_request_node(Addr node_address)
+    bool contains_request_node_by_id(PacketId id)
     {
         for (auto& node : nodes) {
-            if (node.address == node_address) {
+            if (node.id == id) {
                 return true;
             }
         }
         return false;
     }
 
-    Diffs& get_diffs(Addr node_address)
+    Diffs& get_diffs_by_id(PacketId id)
     {
         for (auto& node : nodes) {
-            if (node.address == node_address) {
+            if (node.id == id) {
                 return node.diffs;
             }
         }
-        panic("could not find node address 0x%x in request\n", node_address);
+        panic("could not find packet id %ld in request %s\n", id, to_string());
     }
 
     float get_overlap(IntTreeReq& comp)

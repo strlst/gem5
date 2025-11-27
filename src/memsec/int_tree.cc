@@ -5,6 +5,7 @@
 
 #include "base/trace.hh"
 #include "debug/IntTRB.hh"
+#include "mem/packet.hh"
 #include "memsec/aim_event.hh"
 #include "memsec/int_tree_req.hh"
 #include "memsec/util.hh"
@@ -25,7 +26,8 @@ IntTRB::IntTRB(const IntTRBParams& params)
           (params.packing_factor - 1)),
       range_integrity(params.range_integrity),
       merge_requests(params.merge_req),
-      defragment_requests(params.defrag_req), mac_unit(params.mac_unit),
+      defragment_requests(params.defrag_req),
+      par_dispatch(params.par_dispatch), mac_unit(params.mac_unit),
       mdcachePort(params.name + ".mdcache_side_port", this), stats(this)
 {
     DPRINTF(IntTRB, "Created integrity tree request buffer with properties\n");
@@ -116,7 +118,7 @@ IntTRB::handleResponse(PacketPtr pkt)
         // depending on whether we are just checking the integrity tree,
         // or reading to update the integrity tree metadata, we have to
         // react differently
-        if (contains_request_node(pkt->getAddr(), true)) {
+        if (contains_request_node(pkt->id, true)) {
             // the node we are handling is contained in a read request
             scheduleMACOp(pkt, IntegrityMACEventType::IntegrityMACCheck);
         } else {
@@ -127,13 +129,13 @@ IntTRB::handleResponse(PacketPtr pkt)
             DPRINTF(IntTRB,
                 "created write-after-read request packet %s\n",
                 formattedPacket(new_pkt));
-            update_metadata(new_pkt);
+            update_metadata(pkt, new_pkt);
             // schedule cache response for next cycle
             scheduleMDCacheSend(new_pkt, AFTER_1_CYCLE(curTick()));
         }
     } else {
         // forward completion event to queue
-        bool completed = complete_request_node(pkt->getAddr());
+        bool completed = complete_request_node(pkt->id);
         if (completed) {
             scheduleMACOp(pkt, IntegrityMACEventType::IntegrityMACUpdate);
         }
@@ -210,13 +212,41 @@ IntTRB::defragment_from_queue()
 void
 IntTRB::dispatch_from_queue()
 {
+    if (queue.size() <= 0)
+        return;
     if (merge_requests)
         merge_from_queue();
     if (defragment_requests)
         defragment_from_queue();
-    // simple dispatch logic: just dispatch front
-    if (queue.size() > 0 && !queue.front().dispatched)
-        dispatch_request(queue.front());
+    if (par_dispatch) {
+        // barrier-based parallel dispatch:
+        // write requests serve as natural barrier that serialize dispatches
+        // thus we dispatch all reads requests
+        auto& head = queue.front();
+        if (head.is_read) {
+            for (auto& it : queue) {
+                // break on first write!
+                if (!it.is_read)
+                    break;
+                if (it.dispatched)
+                    continue;
+                DPRINTF(IntTRB, "dispatch (parallel) read request: %s\n",
+                    it.to_string());
+                dispatch_request(it);
+            }
+        } else {
+            // process write (barrier)
+            if (!head.dispatched) {
+                DPRINTF(IntTRB, "dispatch write request (barrier): %s\n",
+                    head.to_string());
+                dispatch_request(head);
+            }
+        }
+    } else {
+        // simple dispatch logic: just dispatch front
+        if (queue.size() > 0 && !queue.front().dispatched)
+            dispatch_request(queue.front());
+    }
 }
 
 void
@@ -231,6 +261,8 @@ IntTRB::dispatch_request(IntTreeReq& request)
         // create and send packets for each layer
         PacketPtr packet_fetch_md = createPkt(node.address, tree_node_bytes,
             requestorId, MemCmd::ReadReq);
+        // associate packet with node
+        node.id = packet_fetch_md->id;
         // schedule cache requests for next cycle
         scheduleMDCacheSend(packet_fetch_md, AFTER_1_CYCLE(curTick()));
     }
@@ -299,51 +331,54 @@ IntTRB::enqueue_request(Addr data_address, bool is_read)
 }
 
 inline std::list<IntTreeReq>::iterator
-IntTRB::get_request_it(Addr node_address)
+IntTRB::get_request_it_by_id(PacketId id)
 {
     auto it = queue.begin();
-    while (it != queue.end() && !it->contains_request_node(node_address))
+    while (it != queue.end() && !it->contains_request_node_by_id(id))
         std::advance(it, 1);
     panic_if(it == queue.end(),
-        "could not find element in integrity tree request buffer\n");
+        "could not find request associated with packet id %ld in integrity "
+        "tree request buffer\n",
+        id);
     return it;
 }
 
+
 IntTreeReq&
-IntTRB::get_request(Addr node_address)
+IntTRB::get_request_by_id(PacketId id)
 {
-    return *get_request_it(node_address);
+    return *get_request_it_by_id(id);
 }
 
 void
-IntTRB::update_metadata(PacketPtr pkt)
+IntTRB::update_metadata(PacketPtr old_pkt, PacketPtr new_pkt)
 {
-    auto node_address = pkt->getAddr();
-    auto request = get_request(node_address);
-    Diffs& diffs = request.get_diffs(node_address);
-    // TODO: update offset calculation and subsequent counter value update
-    uint8_t offset = diffs.begin()->first;
-    DPRINTF(IntTRB, "updating 0x%x request %s offset 0x%x\n", node_address,
-        request.to_string(), offset);
-    // next we want to update the counter at position offset, in a
-    // way that is generic with respect to counter size
-    // (byte granularity)
-    uint8_t* data = pkt->getPtr<uint8_t>();
-    uint8_t carry = 1;
-    uint8_t rightmost = offset * counter_bytes;
-    for (int k = counter_bytes - 1; k >= 0 && carry == 1; k--) {
-        data[rightmost + k] += carry;
-        // we only carry if there has been an overflow
-        carry = data[rightmost + k] == 0;
+    auto it = get_request_it_by_id(old_pkt->id);
+    Diffs& diffs = it->get_diffs_by_id(old_pkt->id);
+    uint8_t* data = new_pkt->getPtr<uint8_t>();
+    for (auto [offset, carry] : diffs) {
+        // next we want to update the counter at position offset, in a
+        // way that is generic with respect to counter size
+        // (byte granularity)
+        uint8_t rightmost = offset * counter_bytes;
+        for (int k = counter_bytes - 1; k >= 0 && carry == 1; k--) {
+            data[rightmost + k] += carry;
+            // we only carry if there has been an overflow
+            carry = data[rightmost + k] == 0;
+        }
     }
-    pkt->cmd = MemCmd::WriteReq;
+    new_pkt->cmd = MemCmd::WriteReq;
+    it->update_packet_id(old_pkt->id, new_pkt->id);
+    DPRINTF(IntTRB,
+        "updated request %s at packet id %ld to new packet id %ld\n",
+        it->to_string(), old_pkt->id, new_pkt->id);
 }
 
 bool
-IntTRB::contains_request_node(Addr node_address, bool read_flag)
+IntTRB::contains_request_node(PacketId id, bool read_flag)
 {
     for (auto& request : queue) {
-        if (request.contains_request_node(node_address) &&
+        if (request.contains_request_node_by_id(id) &&
             request.is_read == read_flag)
             return true;
     }
@@ -351,27 +386,26 @@ IntTRB::contains_request_node(Addr node_address, bool read_flag)
 };
 
 bool
-IntTRB::contains_request_node(Addr node_address)
+IntTRB::contains_request_node(Addr id)
 {
     for (auto& request : queue) {
-        if (request.contains_request_node(node_address))
+        if (request.contains_request_node_by_id(id))
             return true;
     }
     return false;
 };
 
 bool
-IntTRB::complete_request_node(Addr node_address)
+IntTRB::complete_request_node(PacketId id)
 {
     for (auto it = queue.begin(); it != queue.end(); it++) {
         // skip undispatched nodes
         if (!it->dispatched)
             continue;
 
-        if (it->complete(node_address)) {
-            DPRINTF(IntTRB, "finished metadata %s 0x%x, %s\n",
-                it->is_read ? "read" : "write", node_address,
-                it->to_string());
+        if (it->complete_by_id(id)) {
+            DPRINTF(IntTRB, "finished metadata %s packet id %ld, %s\n",
+                it->is_read ? "read" : "write", id, it->to_string());
             if (it->completed_layers >= it->nodes.size()) {
                 // NOTE: perform on-chip root node counter update
                 // this can be done always in a single cycle since each node
@@ -381,42 +415,31 @@ IntTRB::complete_request_node(Addr node_address)
             return false;
         }
     }
-    panic("could not find element in integrity tree request buffer\n");
+    panic(
+        "could not find associated request node for packet id %ld in "
+        "integrity tree request buffer\n",
+        id);
 }
 
 void
-IntTRB::release_request(Addr node_address)
+IntTRB::release_request(PacketId id)
 {
-    // NOTE: since the dispatched node is always the front, the parameter
-    // is actually not needed to search the right node to release, but this
-    // could change with a more sophisticated dispatch logic
+    auto req = get_request_it_by_id(id);
 
-    // make sure to free addresses from set
-    auto front = queue.front();
-
-    panic_if(front.completed_layers < front.nodes.size(),
+    panic_if(req->completed_layers < req->nodes.size(),
         "request %d was released even though it's not complete!"
         "(%d < %d)\n",
-        front.serial, front.completed_layers, tree_height);
+        req->serial, req->completed_layers, tree_height);
     DPRINTF(IntTRB,
         "all metadata writes complete for %s, deleting "
         "request from integrity tree request buffer\n",
-        front.to_string());
-
-    /*
-    // print nodes and its counter tree translations
-    printf("%lx ~", front.data_address);
-    for (auto r : front.nodes) {
-        printf(" %lx", r.address);
-    }
-    printf("\n");
-*/
+        req->to_string());
 
     DPRINTF(IntTRB, "dequeueing 0x%x (read=%d) from buffer with %d entries\n",
-        front.data_address, front.is_read, queue.size());
+        req->data_address, req->is_read, queue.size());
 
     // finally remove element
-    queue.pop_front();
+    queue.erase(req);
 
     // dispatch all dispatchable requests
     dispatch_from_queue();
@@ -429,9 +452,9 @@ void
 IntTRB::IntegrityMACCheck(PacketPtr pkt)
 {
     DPRINTF(IntTRB, "finished integrity MAC check %s\n", formattedPacket(pkt));
-    bool completed = complete_request_node(pkt->getAddr());
+    bool completed = complete_request_node(pkt->id);
     if (completed) {
-        release_request(pkt->getAddr());
+        release_request(pkt->id);
     }
 }
 
@@ -441,7 +464,7 @@ IntTRB::IntegrityMACUpdate(PacketPtr pkt)
     DPRINTF(IntTRB, "finished integrity MAC update %s\n",
         formattedPacket(pkt));
     // theoretically we would update the MAC here
-    release_request(pkt->getAddr());
+    release_request(pkt->id);
 }
 
 void

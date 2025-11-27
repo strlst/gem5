@@ -48,6 +48,8 @@ class IntTRB : public SimObject
     bool merge_requests;
     // whether to simulate request defragmentation strategy
     bool defragment_requests;
+    // whether to simulate request defragmentation strategy
+    bool par_dispatch;
 
     // identify requests
     uint64_t serial = 0;
@@ -144,8 +146,8 @@ class IntTRB : public SimObject
     //std::pair<bool, IntTreeReq>
     void enqueue_request(Addr data_address, bool is_read);
 
-    inline std::list<IntTreeReq>::iterator get_request_it(Addr node_address);
-    IntTreeReq& get_request(Addr node_address);
+    inline std::list<IntTreeReq>::iterator get_request_it_by_id(PacketId id);
+    IntTreeReq& get_request_by_id(PacketId id);
 
     // print helpers
     void print_queue(std::list<IntTreeReq> queue);
@@ -156,14 +158,14 @@ class IntTRB : public SimObject
     void dispatch_from_queue();
 
     // state change
-    void update_metadata(PacketPtr pkt);
-    void release_request(Addr node_addr);
-    bool complete_request_node(Addr node_address);
+    void update_metadata(PacketPtr old_pkt, PacketPtr new_pkt);
+    void release_request(PacketId id);
+    bool complete_request_node(PacketId id);
     void dispatch_request(IntTreeReq& request);
 
     // state query
-    bool contains_request_node(Addr node_address, bool read_flag);
-    bool contains_request_node(Addr node_address);
+    bool contains_request_node(PacketId id, bool read_flag);
+    bool contains_request_node(PacketId id);
 
     // events
     void scheduleMACOp(PacketPtr pkt, IntegrityMACEventType type);
