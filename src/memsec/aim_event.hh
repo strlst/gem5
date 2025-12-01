@@ -12,16 +12,18 @@ class AIMWriteEvent : public Event
   private:
     AIMCtrl *ctrl;
     PacketPtr pkt;
+    std::vector<PacketId> data_ids;
   public:
-    AIMWriteEvent(AIMCtrl *ctrl, PacketPtr pkt)
-        : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt)
+    AIMWriteEvent(AIMCtrl *ctrl, PacketPtr pkt, std::vector<PacketId> data_ids)
+        : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt),
+          data_ids(data_ids)
     {
     }
 
     void process() override
     {
         // process packet by using callback
-        ctrl->opAIMWrite(pkt);
+        ctrl->opAIMWrite(pkt, data_ids);
     }
 };
 
@@ -30,16 +32,18 @@ class AIMReadEvent : public Event
   private:
     AIMCtrl *ctrl;
     PacketPtr pkt;
+    std::vector<PacketId> data_ids;
   public:
-    AIMReadEvent(AIMCtrl *ctrl, PacketPtr pkt)
-        : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt)
+    AIMReadEvent(AIMCtrl *ctrl, PacketPtr pkt, std::vector<PacketId> data_ids)
+        : Event(Default_Pri, AutoDelete), ctrl(ctrl), pkt(pkt),
+          data_ids(data_ids)
     {
     }
 
     void process() override
     {
         // process packet by using callback
-        ctrl->opAIMRead(pkt);
+        ctrl->opAIMRead(pkt, data_ids);
     };
 };
 

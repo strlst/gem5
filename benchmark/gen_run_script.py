@@ -72,9 +72,10 @@ def generate_configurations():
             "32KiB",
         ],
         "metadata-cache-assoc": [0, 8, 8, 8, 8, 8, 32, 8, 8, 8, 8],
-        "int-trb-size": [0, 1, 16, 16, 16, 128, 1, 1, 1, 1, 16],
+        "int-trb-size": [0, 1, 4, 4, 4, 64, 1, 1, 1, 1, 4],
         "int-merge-req": [3 <= i <= 5 or i == 9 for i in range(11)],
         "int-defrag-req": [4 <= i <= 5 or i == 9 for i in range(11)],
+        "int-parallel-dispatch": [i > 1 for i in range(11)],
     }
 
     configurations = [

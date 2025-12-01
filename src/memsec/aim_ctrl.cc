@@ -15,6 +15,8 @@
 #include "sim/clocked_object.hh"
 #include "sim/system.hh"
 
+using namespace std::placeholders;
+
 namespace gem5
 {
 
@@ -39,8 +41,8 @@ AIMCtrl::AIMCtrl(const AIMCtrlParams& params)
     DPRINTF(AIMCtrl, "\t\t\t%d total memory bytes (%f MiB)\n",
         params.range_total.size(),
         (double)params.range_total.size() / 1024.f / 1024.f);
-    DPRINTF(AIMCtrl, "\t\t\t%d counter bits (%d bytes)\n",
-        counter_bytes * 8, counter_bytes);
+    DPRINTF(AIMCtrl, "\t\t\t%d counter bits (%d bytes)\n", counter_bytes * 8,
+        counter_bytes);
     DPRINTF(AIMCtrl,
         "\t\t\t%d integrity tree node bits (%d bytes, %d packing factor, %d "
         "height)\n",
@@ -63,6 +65,8 @@ AIMCtrl::AIMCtrl(const AIMCtrlParams& params)
         range_leaves.to_string(),
         std::log2(range_leaves.end() - range_leaves.start()));
 
+    int_trb->register_counter_read_callback(
+        std::bind(&AIMCtrl::onCounterRead, this, _1, _2, _3));
     int_trb->register_release_callback(
         std::bind(&AIMCtrl::onIntTRBCompletedRequest, this));
     DPRINTF(AIMCtrl, "Registered release callback for IntTRB unit\n");
@@ -125,15 +129,35 @@ bool
 AIMCtrl::handleRequest(PacketPtr pkt)
 {
     DPRINTF(AIMCtrl, "handleRequest %s\n", formattedPacket(pkt));
+
     // keep track of reads and writes
     if (pkt->isRead())
         stats.totalReads++;
     else
         stats.totalWrites++;
 
-    panic_if(range_integrity.contains(pkt->getAddr()),
+    if (pkt->cmd == MemCmd::CleanEvict) {
+        stats.successfulWrites++;
+        memPort.sendPacket(pkt);
+        return true;
+    }
+
+    PacketId data_id = pkt->id;
+    Addr data_address = pkt->getAddr();
+    panic_if(range_integrity.contains(data_address),
         "requests to AIMCtrl are not allowed to fall into the reserved "
         "integrity region!\n");
+
+    // block reads for queued but as of yet unscheduled writes
+    // to prevent read requests from overtaking delayed write requests
+    if (auto it = blocked_set.find(data_address); it != blocked_set.end()) {
+        DPRINTF(AIMCtrl,
+            "request for address 0x%x placed while there is an unresolved "
+            "on-going write request\n",
+            data_address);
+        cpu_failed_packets++;
+        return false;
+    }
 
     // first enqueue integrity tree request in buffer
     if (int_trb->is_busy()) {
@@ -143,25 +167,23 @@ AIMCtrl::handleRequest(PacketPtr pkt)
         return false;
     }
 
-    // block reads for queued but as of yet unscheduled writes
-    // to prevent read requests from overtaking delayed write requests
-    if (auto it = write_queue.find(pkt->getAddr()); it != write_queue.end()) {
-        DPRINTF(AIMCtrl,
-            "request for address 0x%x placed while there is an unresolved "
-            "on-going write request\n",
-            pkt->getAddr());
-        cpu_failed_packets++;
-        return false;
-    }
+    // keep track of successful operations
+    if (pkt->isRead())
+        stats.successfulReads++;
+    else
+        stats.successfulWrites++;
 
     // queue definitely has space
-    // TODO: refactor the queue so that only one request can be launched at
-    // once, with potential for merging dispatches in the future
-    int_trb->enqueue_request(pkt->getAddr(), pkt->isRead());
+    // get associated counter address
+    int_trb->enqueue_request(data_address, data_id, pkt->isRead());
 
     if (pkt->isRead()) {
         // immediately forward packet to mem port
-        // (reads don't require processing)
+        // (reads don't require processing before going to the memctrl)
+        read_queue.add(pkt, data_id);
+        DPRINTF(AIMCtrl,
+            "read_queue: emplaced request (data_id=%ld)\n",
+            data_id);
         memPort.sendPacket(pkt);
     } else {
         /*
@@ -178,14 +200,21 @@ AIMCtrl::handleRequest(PacketPtr pkt)
         */
 
         // decryption
-        scheduleAESEncryptOp(pkt);
+        // synchronize with counter read AES keystream generation
+        write_queue.add(pkt, data_id);
+        DPRINTF(AIMCtrl,
+            "write_queue: emplaced request (data_id=%ld)\n",
+            data_id);
+        // we need to mark address as busy so that they cannot compete with
+        // concurrent read requests
+        blocked_set.emplace(pkt->getAddr());
+        // immediately complete data op since write data is already available
+        DPRINTF(AIMCtrl, "(AIMWrite) completed data op %ld\n", pkt->id);
+        bool complete = write_queue.complete_data_op(data_id);
+        panic_if(complete,
+            "counter read should not complete before data op in the case of "
+            "writes!\n");
     }
-
-    // keep track of successful operations
-    if (pkt->isRead())
-        stats.successfulReads++;
-    else
-        stats.successfulWrites++;
 
     return true;
 }
@@ -204,7 +233,19 @@ AIMCtrl::handleResponse(PacketPtr pkt)
     }
 
     if (pkt->isRead()) {
-        scheduleAESDecryptOp(pkt);
+        // if queue returns *true*, that means we have already generated the
+        // AES keystream for this packet, so we can just return the packet to
+        // the CPU and finish this request
+        DPRINTF(AIMCtrl, "(AIMRead) completed data op %ld\n", pkt->id);
+        if (read_queue.complete_data_op(pkt->id)) {
+            DPRINTF(AIMCtrl,
+                "read_queue: completed data read event for data pkt %ld\n",
+                pkt->id);
+            bool success = cpuPort.sendPacket(pkt);
+            panic_if(!success,
+                "cpu port send packet is not allowed to fail\n");
+            read_queue.erase_data_read(pkt->id);
+        }
         scheduleMACOp(pkt, DataMACEventType::DataMACCheck);
     } else {
         // directly forward the data
@@ -235,20 +276,17 @@ AIMCtrl::sendRangeChange()
 }
 
 void
-AIMCtrl::scheduleAESEncryptOp(PacketPtr pkt)
+AIMCtrl::scheduleAESEncryptOp(PacketPtr pkt, std::vector<PacketId> data_ids)
 {
-    // we need to mark address as busy so that they cannot compete with
-    // concurrent read requests
-    write_queue.insert(pkt->getAddr());
     // this would be the correct time to manipulate a packer during a write
     // AESEncrypt(pkt);
     // schedule future event, when the crypto unit finished encrypting
-    schedule(new AIMWriteEvent(this, pkt),
+    schedule(new AIMWriteEvent(this, pkt, data_ids),
         aes_unit->get_earliest_enc_ready_time(pkt));
 }
 
 void
-AIMCtrl::scheduleAESDecryptOp(PacketPtr pkt)
+AIMCtrl::scheduleAESDecryptOp(PacketPtr pkt, std::vector<PacketId> data_ids)
 {
     // if data should be processed, now would be the time to process it
     // AESDecrypt(pkt);
@@ -262,7 +300,7 @@ AIMCtrl::scheduleAESDecryptOp(PacketPtr pkt)
     */
 
     //schedule(new AESDecryptEvent(this, pkt), clockEdge(delay));
-    schedule(new AIMReadEvent(this, pkt),
+    schedule(new AIMReadEvent(this, pkt, data_ids),
         aes_unit->get_earliest_dec_ready_time(pkt));
 }
 
@@ -349,7 +387,8 @@ AIMCtrl::MemSidePort::processPacket(PacketPtr pkt)
 {
     // NOTE: for now differentiate crypto writes and reads just by checking
     // this field
-    if (!pkt->isRead()) {
+    // NOTE: ignore clean evicts!
+    if (!pkt->isRead() && pkt->cmd != MemCmd::CleanEvict) {
         // perform crypto write postamble
         owner->opAIMWriteCallback(pkt);
     }
@@ -427,9 +466,30 @@ AIMCtrl::MemSidePort::recvRangeChange()
 }
 
 void
+AIMCtrl::onCounterRead(PacketPtr pkt, std::vector<PacketId> data_ids,
+    bool req_is_read)
+{
+    if (req_is_read) {
+        DPRINTF(AIMCtrl,
+            "(AIMRead) counter read"
+            " completed for %s\n",
+            formattedPacket(pkt));
+        // schedule AES keystream generation
+        scheduleAESDecryptOp(pkt, data_ids);
+    } else {
+        DPRINTF(AIMCtrl,
+            "(AIMWrite) counter read"
+            " completed for %s\n",
+            formattedPacket(pkt));
+        // schedule AES keystream generation
+        scheduleAESEncryptOp(pkt, data_ids);
+    }
+}
+
+void
 AIMCtrl::onIntTRBCompletedRequest()
 {
-    if (cpu_failed_packets > 0) {
+    if (!int_trb->is_busy() && cpu_failed_packets > 0) {
         DPRINTF(AIMCtrl,
             "onIntTRBCompletedRequest: %d failed packets, retrying\n",
             cpu_failed_packets);
@@ -439,35 +499,60 @@ AIMCtrl::onIntTRBCompletedRequest()
 }
 
 void
-AIMCtrl::opAIMWrite(PacketPtr pkt)
+AIMCtrl::opAIMWrite(PacketPtr pkt, std::vector<PacketId> data_ids)
 {
-    // we are handling failed packets gracefully in the memport implementation
-    memPort.sendPacket(pkt);
+    for (auto data_id : data_ids) {
+        DPRINTF(AIMCtrl, "AIM write operation %s for data id %ld\n",
+            formattedPacket(pkt), data_id);
+        // if completing the write queue entry returns *true*, the data write
+        // has previously already completed, so now is the appropriate time
+        // to return the packet to the CPU
+        // NOTE: for writes this should always be true
+        if (write_queue.complete_counter_read(data_id)) {
+            DPRINTF(AIMCtrl,
+                "write_queue: completed counter read event for data pkt "
+                "%ld\n",
+                data_id);
+            PacketPtr data_pkt = write_queue.get_data_pkt(data_id);
+            memPort.sendPacket(data_pkt);
+            write_queue.erase_data_read(data_id);
+        }
+    }
 }
 
 void
 AIMCtrl::opAIMWriteCallback(PacketPtr pkt)
 {
-    //panic_if(!success, "mem port send packet is not allowed to fail\n");
     scheduleMACOp(pkt, DataMACEventType::DataMACUpdate);
     // free up address again
-    write_queue.erase(pkt->getAddr());
+    blocked_set.erase(blocked_set.find(pkt->getAddr()));
     DPRINTF(AIMCtrl,
-        "opAIMWriteCallback: reduced write queue to %d entries\n",
-        write_queue.size());
+        "opAIMWriteCallback: reduced block set to %d entries\n",
+        blocked_set.size());
 
     onIntTRBCompletedRequest();
 }
 
 void
-AIMCtrl::opAIMRead(PacketPtr pkt)
+AIMCtrl::opAIMRead(PacketPtr pkt, std::vector<PacketId> data_ids)
 {
-    // TODO: should we block sendpacket until MAC unit is available?
-    // for now ignore return value
-    bool success = cpuPort.sendPacket(pkt);
-    panic_if(!success, "mem port send packet is not allowed to fail\n");
-    // also check the data MAC itself for integrity
-    scheduleMACOp(pkt, DataMACEventType::DataMACCheck);
+    for (auto data_id : data_ids) {
+        DPRINTF(AIMCtrl, "AIM read operation %s for data id %ld\n",
+            formattedPacket(pkt), data_id);
+        // if completing the read queue entry returns *true*, the data read
+        // has previously already completed, so now is the appropriate time
+        // to return the packet to the CPU
+        if (read_queue.complete_counter_read(data_id)) {
+            DPRINTF(AIMCtrl,
+                "read_queue: completed counter read event for data pkt %ld\n",
+                pkt->id);
+            PacketPtr data_pkt = read_queue.get_data_pkt(data_id);
+            bool success = cpuPort.sendPacket(data_pkt);
+            panic_if(!success,
+                "cpu port send packet is not allowed to fail\n");
+            read_queue.erase_data_read(data_id);
+        }
+    }
 }
 
 void

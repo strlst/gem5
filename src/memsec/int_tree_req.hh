@@ -18,14 +18,29 @@ typedef std::unordered_map<uint8_t, uint8_t> Diffs;
 
 struct IntTreeReqNode
 {
+    // address of integrity tree node
     Addr address;
+    // address of actual physical memory being protected
+    Addr data_address;
+    // associated packet ids of physical memory requests
+    // NOTE: can be multiple due to request merging!
+    std::vector<PacketId> data_ids;
+    // map of offset/value pairs for this node
     Diffs diffs;
+    // associated packet id
     PacketId id{};
+    // whether this node represents a terminal node (counter)
+    bool is_counter;
+    // whether this node is marked complete
     bool completed = false;
 
-    IntTreeReqNode(Addr address, uint8_t offset) : address(address)
+    IntTreeReqNode(Addr address, Addr data_address, PacketId data_id,
+        uint8_t offset, bool is_counter)
+        : address(address), data_address(data_address),
+          is_counter(is_counter)
     {
         diffs[offset] = 1;
+        data_ids.emplace_back(data_id);
     }
 
     bool complete_by_id(PacketId id)
@@ -34,6 +49,18 @@ struct IntTreeReqNode
         // the first time, subsequent times return false
         // touching this code is likely unwise
         return !completed && (completed = id == this->id);
+    }
+
+    std::string to_string()
+    {
+        std::ostringstream ss;
+        ss << std::hex << address << std::dec << "@n" << diffs.size();
+        for (auto& [offset, count] : diffs) {
+            ss << "d" << unsigned(offset) << "+" << unsigned(count);
+        }
+        ss << (is_counter ? "C" : "");
+        ss << (completed ? "*" : "");
+        return ss.str();
     }
 };
 
@@ -44,6 +71,7 @@ operator<<(std::ostream& os, const IntTreeReqNode& node)
     for (auto& [offset, count] : node.diffs) {
         os << "d" << unsigned(offset) << "+" << unsigned(count);
     }
+    os << (node.is_counter ? "C" : "");
     os << (node.completed ? "*" : "");
     return os;
 }
@@ -52,8 +80,6 @@ struct IntTreeReq
 {
     // integer identifying sequential causality
     uint64_t serial;
-    // address of actual physical memory being protected
-    Addr data_address;
     // each request can be a write or read request (tree update or tree check)
     bool is_read;
     // each integrity tree request encompasses a path of nodes from the leaf
@@ -63,14 +89,25 @@ struct IntTreeReq
     bool dispatched = false;
 
     IntTreeReq(uint64_t serial, Addr data_address, bool is_read)
-        : serial(serial), data_address(data_address), is_read(is_read)
+        : serial(serial), is_read(is_read)
     {
         panic_if(sizeof(Addr) != sizeof(uint64_t), "unsupported addr size\n");
     }
 
-    void add_request_node(Addr node_address, uint8_t node_offset)
+    void add_request_node(Addr node_address, Addr data_address,
+        PacketId data_id, uint8_t node_offset, bool is_counter)
     {
-        nodes.emplace_back(IntTreeReqNode(node_address, node_offset));
+        nodes.emplace_back(IntTreeReqNode(node_address, data_address, data_id,
+            node_offset, is_counter));
+    }
+
+    inline std::list<IntTreeReqNode>::iterator get_node_it_by_id(PacketId id)
+    {
+        for (auto node = nodes.begin(); node != nodes.end(); node++) {
+            if (node->id == id)
+                return node;
+        }
+        panic("could not find node associated with request id %ld\n", id);
     }
 
     void update_packet_id(PacketId old_id, PacketId new_id)
@@ -78,6 +115,9 @@ struct IntTreeReq
         for (auto& node : nodes) {
             if (node.id == old_id) {
                 node.id = new_id;
+                // if we are converting a request node, we will have already
+                // returned the counter
+                node.is_counter = false;
                 return;
             }
         }
@@ -94,6 +134,14 @@ struct IntTreeReq
             }
         }
         return false;
+    }
+
+    int count_completed_layers()
+    {
+        int sum = 0;
+        for (auto& node : nodes)
+            sum += node.completed;
+        return sum;
     }
 
     bool contains_request_node_by_id(PacketId id)
@@ -139,6 +187,9 @@ struct IntTreeReq
         while (s_it != nodes.end() && c_it != comp.nodes.end()) {
             //std::cout << *s_it << "<->" << *c_it;
             if (s_it->address == c_it->address) {
+                for (auto d : c_it->data_ids) {
+                    s_it->data_ids.emplace_back(d);
+                }
                 for (auto d : c_it->diffs) {
                     s_it->diffs[d.first] += d.second;
                 }
@@ -159,7 +210,6 @@ struct IntTreeReq
         std::ostringstream ss;
         ss << "IntegrityTreeReq(";
         ss << "serial=" << serial;
-        ss << ", data_addr=0x" << std::hex << data_address << std::dec;
         ss << ", is_read=" << unsigned(is_read);
         ss << ", nodes={ " << unsigned(is_read);
         for (auto& node : nodes)

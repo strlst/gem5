@@ -120,9 +120,10 @@ def analyze(statistics, target, fname, fields, splitfunc):
                 continue
             field, stat, comment = splitfunc(line)
             obj[field] = (stat, comment)
-            print(
-                f"{target}: extracted {stat} on field {field} with comment {comment}{f' on channel {channel}' if channel else ''}"
-            )
+            # print(
+            # f"{target}: extracted {stat} on field {field} with comment {comment}{f' on channel {channel}' if channel else ''}"
+            # )
+    print(f"analyzed {fname}")
 
 
 def summarize_statistics(statistics):

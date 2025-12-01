@@ -114,6 +114,15 @@ IntTRB::MetadataCacheSidePort::recvRangeChange()
 bool
 IntTRB::handleResponse(PacketPtr pkt)
 {
+    // see if pkt is associated with a counter read and get associated
+    // iterator (otherwise it == queue.end())
+    auto req = get_request_it_by_id(pkt->id);
+    auto node = req->get_node_it_by_id(pkt->id);
+    if (node->is_counter) {
+        DPRINTF(IntTRB, "matched pkt %ld counter (node %s) read with %s\n",
+            pkt->id, node->to_string(), req->to_string());
+        counter_read_callback(pkt, node->data_ids, req->is_read);
+    }
     if (pkt->isRead()) {
         // depending on whether we are just checking the integrity tree,
         // or reading to update the integrity tree metadata, we have to
@@ -189,7 +198,8 @@ IntTRB::defragment_from_queue()
         auto left = queue.begin();
         auto right = std::next(left);
         while (right != queue.end()) {
-            if (left->nodes.size() + right->nodes.size() <= tree_height &&
+            if (!left->dispatched &&
+                left->nodes.size() + right->nodes.size() <= tree_height &&
                 left->is_read == right->is_read) {
                 stats.defragmentedRequests++;
                 stats.defragmentedRequestNodes += right->nodes.size();
@@ -244,7 +254,7 @@ IntTRB::dispatch_from_queue()
         }
     } else {
         // simple dispatch logic: just dispatch front
-        if (queue.size() > 0 && !queue.front().dispatched)
+        if (!queue.front().dispatched)
             dispatch_request(queue.front());
     }
 }
@@ -269,13 +279,20 @@ IntTRB::dispatch_request(IntTreeReq& request)
 }
 
 void
+IntTRB::register_counter_read_callback(
+    std::function<void(PacketPtr, std::vector<PacketId>, bool)> callback)
+{
+    counter_read_callback = callback;
+}
+
+void
 IntTRB::register_release_callback(std::function<void()> callback)
 {
     release_callback = callback;
 }
 
 void
-IntTRB::enqueue_request(Addr data_address, bool is_read)
+IntTRB::enqueue_request(Addr data_address, PacketId data_id, bool is_read)
 {
     // keep statistics
     stats.enqueued++;
@@ -312,7 +329,8 @@ IntTRB::enqueue_request(Addr data_address, bool is_read)
             node_address, range_integrity.to_string());
 
         // add node to new request
-        new_request.add_request_node(node_address, node_offset);
+        new_request.add_request_node(node_address, data_address, data_id,
+            node_offset, i == 0);
 
         // update node id
         uint64_t parent_id = node_id / packing_factor;
@@ -435,8 +453,9 @@ IntTRB::release_request(PacketId id)
         "request from integrity tree request buffer\n",
         req->to_string());
 
-    DPRINTF(IntTRB, "dequeueing 0x%x (read=%d) from buffer with %d entries\n",
-        req->data_address, req->is_read, queue.size());
+    DPRINTF(IntTRB,
+        "dequeueing request %d (read=%d) from buffer with %d entries\n",
+        req->serial, req->is_read, queue.size());
 
     // finally remove element
     queue.erase(req);

@@ -43,6 +43,7 @@ formattedPacket(PacketPtr pkt)
     std::ostringstream ss;
     ss << "pkt(";
     ss << "addr=0x" << std::hex << pkt->getAddr() << std::dec;
+    ss << ", id=" << pkt->id;
     ss << ", cmd=" << pkt->cmdString();
     ss << ", size=" << unsigned(pkt->getSize());
     ss << ", read=" << unsigned(pkt->isRead());

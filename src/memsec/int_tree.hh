@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <queue>
+#include <vector>
 
 #include "base/addr_range.hh"
 #include "base/statistics.hh"
@@ -56,6 +57,9 @@ class IntTRB : public SimObject
 
     MACUnit* mac_unit;
 
+    // counter read callback
+    std::function<void(PacketPtr, std::vector<PacketId>, bool)>
+        counter_read_callback;
     // release logic
     std::function<void()> release_callback;
 
@@ -92,6 +96,8 @@ class IntTRB : public SimObject
   public:
     IntTRB(const IntTRBParams& params);
 
+    void register_counter_read_callback(
+        std::function<void(PacketPtr, std::vector<PacketId>, bool)> callback);
     void register_release_callback(std::function<void()> callback);
 
     struct PktStats : public Group
@@ -143,8 +149,7 @@ class IntTRB : public SimObject
         return size >= 0 && queue.size() >= size;
     }
 
-    //std::pair<bool, IntTreeReq>
-    void enqueue_request(Addr data_address, bool is_read);
+    void enqueue_request(Addr data_address, PacketId data_id, bool is_read);
 
     inline std::list<IntTreeReq>::iterator get_request_it_by_id(PacketId id);
     IntTreeReq& get_request_by_id(PacketId id);

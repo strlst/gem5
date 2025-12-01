@@ -12,6 +12,7 @@
 #include "mem/packet.hh"
 #include "mem/port.hh"
 #include "memsec/aes_unit.hh"
+#include "memsec/aim_queue.hh"
 #include "memsec/int_tree.hh"
 #include "memsec/mac_unit.hh"
 #include "params/AIMCtrl.hh"
@@ -84,7 +85,9 @@ class AIMCtrl : public ClockedObject
     AESUnit* aes_unit;
     MACUnit* mac_unit;
 
-    std::set<Addr> write_queue;
+    AIMQueue read_queue;
+    AIMQueue write_queue;
+    std::unordered_set<Addr> blocked_set;
     IntTRB* int_trb;
 
     void startup() override;
@@ -139,8 +142,8 @@ class AIMCtrl : public ClockedObject
     void sendRangeChange();
 
     // available operations
-    void scheduleAESEncryptOp(PacketPtr pkt);
-    void scheduleAESDecryptOp(PacketPtr pkt);
+    void scheduleAESEncryptOp(PacketPtr pkt, std::vector<PacketId> data_ids);
+    void scheduleAESDecryptOp(PacketPtr pkt, std::vector<PacketId> data_ids);
     void scheduleMACOp(PacketPtr pkt, DataMACEventType type);
 
     struct PktStats : public Group
@@ -302,12 +305,20 @@ class AIMCtrl : public ClockedObject
     void onIntTRBCompletedRequest();
 
     /**
+     * Callback to hook on completion of counter read.
+     */
+    void onCounterRead(PacketPtr pkt, std::vector<PacketId> data_ids,
+        bool req_is_read);
+
+    /**
      * If data sent from the CPU side needs to be encrypted, emulate
      * encryption feature functionally and also its timing.
      *
      * @param pkt requesting packet
+     * @param data_ids packet ids of the associated data pkts
+     * (not the same as pkt!)
      */
-    void opAIMWrite(PacketPtr pkt);
+    void opAIMWrite(PacketPtr pkt, std::vector<PacketId> data_ids);
     void opAIMWriteCallback(PacketPtr pkt);
 
     /**
@@ -315,8 +326,10 @@ class AIMCtrl : public ClockedObject
      * encryption feature functionally and also its timing.
      *
      * @param pkt requesting packet
+     * @param data_id packet ids of the associated data pkts
+     * (not the same as pkt!)
      */
-    void opAIMRead(PacketPtr pkt);
+    void opAIMRead(PacketPtr pkt, std::vector<PacketId> data_ids);
 
     /**
      * In case a data node has been decrypted, perform MAC computation to
