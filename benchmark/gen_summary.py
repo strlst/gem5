@@ -38,11 +38,11 @@ gem5_fields = {
     # "system.cpu.branchPred.condIncorrect",
     # "system.cpu.dcache.overallMisses::total",
     "system.cpu.dcache.overallMissRate::total",
-    "system.cpu.dcache.overallAvgMissLatency::total",
+    # "system.cpu.dcache.overallAvgMissLatency::total",
     # "system.cpu.dcache.replacements",
     # "system.cpu.icache.overallMisses::total",
     "system.cpu.icache.overallMissRate::total",
-    "system.cpu.icache.overallAvgMissLatency::total",
+    # "system.cpu.icache.overallAvgMissLatency::total",
     # "system.cpu.icache.replacements",
     # "system.l2cache.overallMisses::total",
     "system.l2cache.overallMissRate::total",
@@ -50,16 +50,19 @@ gem5_fields = {
     # "system.l2cache.replacements",
     # "system.metadata_cache.overallMisses::total",
     "system.metadata_cache.overallMissRate::total",
-    "system.metadata_cache.overallAvgMissLatency::total",
-    # "system.metadata_cache.replacements",
+    # "system.metadata_cache.overallAvgMissLatency::total",
+    "system.metadata_cache.replacements",
+    "system.aim_ctrl.totalRequests",
+    "system.aim_ctrl.successfulRequests",
+    "system.aim_ctrl.refusedRequests",
     # "system.aim_ctrl.successfulReads",
     # "system.aim_ctrl.successfulWrites",
     "system.aim_ctrl.int_trb.enqueued",
     # "system.mem_ctrl.bytesRead::cpu.inst",
     # "system.mem_ctrl.bytesRead::cpu.data",
     # "system.mem_ctrl.bytesRead::aim_ctrl.int_trb",
-    "system.mem_ctrl.bytesRead::total",
-    "system.mem_ctrl.bytesWritten::total",
+    # "system.mem_ctrl.bytesRead::total",
+    # "system.mem_ctrl.bytesWritten::total",
     # "system.mem_ctrl.numReads::cpu.inst",
     # "system.mem_ctrl.numReads::cpu.data",
     # "system.mem_ctrl.numReads::aim_ctrl.int_trb",
@@ -68,8 +71,8 @@ gem5_fields = {
     # "system.mem_ctrl.bwRead::cpu.inst",
     # "system.mem_ctrl.bwRead::cpu.data",
     # "system.mem_ctrl.bwRead::aim_ctrl.int_trb",
-    "system.mem_ctrl.bwRead::total",
-    "system.mem_ctrl.bwWrite::total",
+    # "system.mem_ctrl.bwRead::total",
+    # "system.mem_ctrl.bwWrite::total",
     # "system.mem_ctrl.bwTotal::cpu.inst",
     # "system.mem_ctrl.bwTotal::cpu.data",
     # "system.mem_ctrl.bwTotal::aim_ctrl.int_trb",
@@ -205,13 +208,13 @@ def analyze_accesses(accesses):
         for i, k in enumerate(keys):
             for l in keys[i + 1 :]:
                 imbalance = round(hits[l] * 100 / (hits[k] + hits[l]), 2)
-                print(
-                    f"{benchmark}: imbalance(@{k}, @{l}) = {hits[l]} / ({hits[k]} + {hits[l]}) = {imbalance}%"
-                )
+                # print(
+                # f"{benchmark}: imbalance(@{k}, @{l}) = {hits[l]} / ({hits[k]} + {hits[l]}) = {imbalance}%"
+                # )
                 overhead = round((hits[k] + hits[l]) * 100 / hits[k], 2)
-                print(
-                    f"{benchmark}: overhead(@{k}, @{l}) = ({hits[k]} + {hits[l]}) / {hits[k]} = {overhead}%"
-                )
+                # print(
+                # f"{benchmark}: overhead(@{k}, @{l}) = ({hits[k]} + {hits[l]}) / {hits[k]} = {overhead}%"
+                # )
                 imbalances[experiment][arch] = imbalance
                 overheads[experiment][arch] = overhead
 
@@ -281,7 +284,7 @@ def plot_accesses(data, title):
         line.set_linestyle("--")
         line.set_linewidth(1.5)
     # plt.ylim(0, 100)
-    plt.xticks(rotation=30, ha="right")
+    plt.xticks(rotation=30)
     plt.xlabel("Benchmark")
     plt.ylabel(f"Integrity Tree Memory Traffic {title} [\\%]")
     plt.title(f"{title} of different configurations across benchmarks")
@@ -404,7 +407,7 @@ def main(args):
             or "stats.txt" not in files
             or "dramsim3.schedule.txt" not in files
         ):
-            print(f"skipping analysis of {root}")
+            # print(f"skipping analysis of {root}")
             continue
 
         # skip architectures not included in whitelist

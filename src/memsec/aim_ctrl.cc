@@ -131,12 +131,14 @@ AIMCtrl::handleRequest(PacketPtr pkt)
     DPRINTF(AIMCtrl, "handleRequest %s\n", formattedPacket(pkt));
 
     // keep track of reads and writes
+    stats.totalRequests++;
     if (pkt->isRead())
         stats.totalReads++;
     else
         stats.totalWrites++;
 
     if (pkt->cmd == MemCmd::CleanEvict) {
+        stats.successfulRequests++;
         stats.successfulWrites++;
         memPort.sendPacket(pkt);
         return true;
@@ -150,24 +152,34 @@ AIMCtrl::handleRequest(PacketPtr pkt)
 
     // block reads for queued but as of yet unscheduled writes
     // to prevent read requests from overtaking delayed write requests
-    if (auto it = blocked_set.find(data_address); it != blocked_set.end()) {
+    // in the memory controller buffer!
+    if (auto it = blocked_set.find(data_address);
+        pkt->isRead() && it != blocked_set.end()) {
         DPRINTF(AIMCtrl,
             "request for address 0x%x placed while there is an unresolved "
             "on-going write request\n",
             data_address);
+        stats.refusedRequests++;
+        stats.refusedReads++;
         cpu_failed_packets++;
         return false;
     }
 
     // first enqueue integrity tree request in buffer
     if (int_trb->is_busy()) {
-        DPRINTF(AIMCtrl, "IntTRB is full, refusing request\n");
         // fail on full queue
+        DPRINTF(AIMCtrl, "IntTRB is full, refusing request\n");
+        stats.refusedRequests++;
+        if (pkt->isRead())
+            stats.refusedReads++;
+        else
+            stats.refusedWrites++;
         cpu_failed_packets++;
         return false;
     }
 
     // keep track of successful operations
+    stats.successfulRequests++;
     if (pkt->isRead())
         stats.successfulReads++;
     else
@@ -430,7 +442,8 @@ AIMCtrl::MemSidePort::recvReqRetry()
     // use for loop to only process packets currently in queue,
     // ignorning newly added failed packets
     bool success = true;
-    // since processPacket has side-effects, we don't want to delay processing
+    // since processPacket has side-effects, we want to call processPacket
+    // after retrying failed packets
     std::queue<PacketPtr> successful_packets;
     while (success && !failedPackets.empty()) {
         owner->stats.memRetryCountSend++;
