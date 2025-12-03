@@ -89,6 +89,11 @@ benchmark: tidy
 summary:
 	python3 benchmark/gen_summary.py
 
+detailed-summary:
+	python3 benchmark/gen_summary.py -f memsec_none,memsec_full,memsec_basic -p plots_general
+	python3 benchmark/gen_summary.py -f memsec_basic,memsec_buff,memsec_merge,memsec_defrag -p plots_buffered
+	python3 benchmark/gen_summary.py -f memsec_none,memsec_basic,memsec_no_delay,memsec_aes_units -p plots_delay
+
 measure-int-trb-latencies:
 	./benchmark/benchmark_int_trb_latencies.sh
 	python3 benchmark/plot_int_trb_bench.py
@@ -97,7 +102,7 @@ force-clean:
 	rm -rf m5out build
 
 tidy:
-	rm -rf result plots
+	rm -rf result plots run-spec-benchmarks.sh
 
 clean:
 	@echo -n "Are you sure? [y/N] " && read ans && if [ $${ans:-'N'} = 'y' ]; then make clean; fi

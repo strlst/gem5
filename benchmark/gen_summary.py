@@ -129,7 +129,7 @@ def analyze(statistics, target, fname, fields, splitfunc):
     print(f"analyzed {fname}")
 
 
-def summarize_statistics(statistics):
+def summarize_statistics(args, statistics):
     # process extracted statistics
     data = {"by-dramsim3": dict(), "by-gem5": dict()}
     descriptions = dict()
@@ -160,17 +160,21 @@ def summarize_statistics(statistics):
                 descriptions[stat] = statistics[benchmark]["gem5"][stat][1]
 
     # create output dir
-    os.makedirs("plots", exist_ok=True)
-    print(f'created folder "plots"')
+    os.makedirs(args.plots_path, exist_ok=True)
+    print(f'created folder "{args.plots_path}"')
 
     df_gem5 = prepare_df(pd.DataFrame(data["by-gem5"]))
     for stat in gem5_fields:
-        plot_stat_bar(df_gem5, stat, descriptions[stat], "gem5")
-        # plot_stat_line(df_gem5, stat, descriptions[stat], "gem5")
+        plot_stat_bar(
+            df_gem5, stat, descriptions[stat], "gem5", args.plots_path
+        )
+        # plot_stat_line(df_gem5, stat, descriptions[stat], "gem5", args.plots_path)
     df_dramsim3 = prepare_df(pd.DataFrame(data["by-dramsim3"]["channel0"]))
     for stat in dramsim3_fields:
-        plot_stat_bar(df_dramsim3, stat, descriptions[stat], "dramsim3")
-        # plot_stat_line(df_dramsim3, stat, descriptions[stat], "dramsim3")
+        plot_stat_bar(
+            df_dramsim3, stat, descriptions[stat], "dramsim3", args.plots_path
+        )
+        # plot_stat_line(df_dramsim3, stat, descriptions[stat], "dramsim3", args.plots_path)
 
 
 def bin_schedule(hits, fname):
@@ -183,7 +187,7 @@ def bin_schedule(hits, fname):
             hits[binned] = hits.get(binned, 0) + 1
 
 
-def analyze_accesses(accesses):
+def analyze_accesses(args, accesses):
     # NOTE: imbalance(k, l) is defined as l / (k + l) over the access counts
     # of any two regions of memory
     # for instance, we can compare region
@@ -219,8 +223,8 @@ def analyze_accesses(accesses):
                 overheads[experiment][arch] = overhead
 
     # finally plot and save data
-    plot_accesses(imbalances, "Imbalance")
-    plot_accesses(overheads, "Overhead")
+    plot_accesses(imbalances, "Imbalance", args.plots_path)
+    plot_accesses(overheads, "Overhead", args.plots_path)
 
 
 def str_after_n_th_index(string, char, n):
@@ -248,7 +252,7 @@ def prepare_df(df):
     return df
 
 
-def plot_accesses(data, title):
+def plot_accesses(data, title, plots_path):
     sns.set(style="whitegrid")
     plt.rcParams.update(
         {
@@ -284,7 +288,7 @@ def plot_accesses(data, title):
         line.set_linestyle("--")
         line.set_linewidth(1.5)
     # plt.ylim(0, 100)
-    plt.xticks(rotation=30)
+    plt.xticks(rotation=30, ha="right")
     plt.xlabel("Benchmark")
     plt.ylabel(f"Integrity Tree Memory Traffic {title} [\\%]")
     plt.title(f"{title} of different configurations across benchmarks")
@@ -294,14 +298,14 @@ def plot_accesses(data, title):
     plt.tight_layout()
 
     lower_title = title.lower()
-    filename = os.path.join("plots", f"dramsim3-schedule-{lower_title}.png")
+    filename = os.path.join(plots_path, f"dramsim3-schedule-{lower_title}.png")
     plt.savefig(filename, dpi=300, bbox_inches="tight")
     print(f"saved imbalance figure to file {filename}")
 
     plt.close()
 
 
-def plot_stat_line(df, stat, title, simulator):
+def plot_stat_line(df, stat, title, simulator, plots_path):
     sns.set(style="whitegrid")
     plt.rcParams.update(
         {
@@ -342,14 +346,14 @@ def plot_stat_line(df, stat, title, simulator):
     )
     plt.tight_layout()
 
-    filename = os.path.join("plots", f"{simulator}-{stat}.png")
+    filename = os.path.join(plots_path, f"{simulator}-{stat}.png")
     plt.savefig(filename, dpi=300, bbox_inches="tight")
     print(f"saved figure {simulator}-{stat} to file {filename}")
 
     plt.close()
 
 
-def plot_stat_bar(df, stat, title, simulator):
+def plot_stat_bar(df, stat, title, simulator, plots_path):
     sns.set(style="whitegrid")
     plt.rcParams.update(
         {
@@ -364,10 +368,10 @@ def plot_stat_bar(df, stat, title, simulator):
         title="Configuration", bbox_to_anchor=(1.02, 1), loc="upper left"
     )
     ax.set_title(title)
-    plt.xticks(rotation=30)
+    plt.xticks(rotation=30, ha="right")
     plt.tight_layout()
 
-    filename = os.path.join("plots", f"{simulator}-{stat}.png")
+    filename = os.path.join(plots_path, f"{simulator}-{stat}.png")
     plt.savefig(filename, dpi=300, bbox_inches="tight")
     print(f"saved figure {simulator}-{stat} to file {filename}")
 
@@ -452,10 +456,10 @@ def main(args):
         save(args, statistics)
 
     if not args.skip_statistics:
-        summarize_statistics(statistics)
+        summarize_statistics(args, statistics)
 
     if not args.skip_imbalance:
-        analyze_accesses(accesses)
+        analyze_accesses(args, accesses)
 
 
 if __name__ == "__main__":
@@ -464,6 +468,12 @@ if __name__ == "__main__":
         "-o",
         "--out-path",
         help="Output file path to write resulting shell script to",
+    )
+    parser.add_argument(
+        "-p",
+        "--plots-path",
+        default="plots",
+        help="Path to folder where plots should be saved to",
     )
     parser.add_argument(
         "-s",

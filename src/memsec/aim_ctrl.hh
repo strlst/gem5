@@ -87,7 +87,7 @@ class AIMCtrl : public ClockedObject
 
     AIMQueue read_queue;
     AIMQueue write_queue;
-    std::unordered_set<Addr> blocked_set;
+    std::unordered_multiset<Addr> blocked_set;
     IntTRB* int_trb;
 
     void startup() override;

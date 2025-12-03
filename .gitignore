@@ -56,3 +56,7 @@ refrate3_resid.log
 refrate4_dqnrm.log
 refrate4_resid.log
 s.txt
+oldplots
+plots_buffered
+plots_delay
+plots_general
