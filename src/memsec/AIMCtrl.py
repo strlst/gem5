@@ -62,6 +62,9 @@ class IntTRB(SimObject):
     par_dispatch = Param.Bool(
         False, "whether to dispatch requests in buffer in parallel"
     )
+    sim_dispatch = Param.Bool(
+        False, "whether to dispatch similar requests in buffer first"
+    )
     bus_bytes = Param.Int(64, "bus size in bytes")
     packing_factor = Param.Int(
         8, "amount of counters which form one node (or MAC)"

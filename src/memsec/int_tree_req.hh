@@ -2,6 +2,7 @@
 #define __MEMSEC_INT_TREE_REQ_HH__
 
 #include <cstdint>
+#include <cstdlib>
 #include <list>
 #include <sstream>
 #include <utility>
@@ -36,8 +37,7 @@ struct IntTreeReqNode
 
     IntTreeReqNode(Addr address, Addr data_address, PacketId data_id,
         uint8_t offset, bool is_counter)
-        : address(address), data_address(data_address),
-          is_counter(is_counter)
+        : address(address), data_address(data_address), is_counter(is_counter)
     {
         diffs[offset] = 1;
         data_ids.emplace_back(data_id);
@@ -86,6 +86,7 @@ struct IntTreeReq
     // up to the node before the root
     std::list<IntTreeReqNode> nodes = std::list<IntTreeReqNode>();
     uint8_t completed_layers = 0;
+    uint8_t counter_nodes = 1;
     bool dispatched = false;
 
     IntTreeReq(uint64_t serial, Addr data_address, bool is_read)
@@ -136,11 +137,19 @@ struct IntTreeReq
         return false;
     }
 
-    int count_completed_layers()
+    int count_completed_nodes()
     {
         int sum = 0;
         for (auto& node : nodes)
             sum += node.completed;
+        return sum;
+    }
+
+    int count_counter_nodes()
+    {
+        int sum = 0;
+        for (auto& node : nodes)
+            sum += node.is_counter;
         return sum;
     }
 
@@ -203,6 +212,20 @@ struct IntTreeReq
             s_it++;
         }
         return merged;
+    }
+
+    uint64_t compute_similarity(IntTreeReq& comp)
+    {
+        auto s_it = nodes.begin();
+        auto c_it = comp.nodes.begin();
+        uint64_t similarity = 0;
+        while (s_it != nodes.end() && c_it != comp.nodes.end()) {
+            similarity += (uint64_t)std::llabs((int64_t)s_it->address -
+                (int64_t)c_it->address);
+            s_it++;
+            c_it++;
+        }
+        return similarity;
     }
 
     std::string to_string()

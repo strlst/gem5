@@ -44,6 +44,8 @@ class IntTRB : public SimObject
     // this part is constant with respect to system instantiation
     const uint64_t non_leaf_nodes;
     AddrRange range_integrity;
+    // least recently dispatched
+    IntTreeReq lrd = IntTreeReq(-1, -1, 1);
     std::list<IntTreeReq> queue;
     // whether to simulate request merging strategy
     bool merge_requests;
@@ -51,6 +53,8 @@ class IntTRB : public SimObject
     bool defragment_requests;
     // whether to simulate request defragmentation strategy
     bool par_dispatch;
+    // whether to simulate the similar dispatch strategy
+    bool sim_dispatch;
 
     // identify requests
     uint64_t serial = 0;

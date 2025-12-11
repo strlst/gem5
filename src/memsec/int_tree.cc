@@ -1,8 +1,11 @@
 #include "memsec/int_tree.hh"
 
 #include <cstdint>
+#include <iterator>
 #include <sstream>
+#include <string>
 
+#include "base/logging.hh"
 #include "base/trace.hh"
 #include "debug/IntTRB.hh"
 #include "mem/packet.hh"
@@ -27,7 +30,8 @@ IntTRB::IntTRB(const IntTRBParams& params)
       range_integrity(params.range_integrity),
       merge_requests(params.merge_req),
       defragment_requests(params.defrag_req),
-      par_dispatch(params.par_dispatch), mac_unit(params.mac_unit),
+      par_dispatch(params.par_dispatch), sim_dispatch(params.sim_dispatch),
+      mac_unit(params.mac_unit),
       mdcachePort(params.name + ".mdcache_side_port", this), stats(this)
 {
     DPRINTF(IntTRB, "Created integrity tree request buffer with properties\n");
@@ -164,7 +168,8 @@ IntTRB::merge_from_queue()
         auto right = queue.rbegin();
         auto left = std::next(right);
         for (; left != queue.rend(); left++, right++) {
-            if (!left->dispatched && left->is_read == right->is_read) {
+            if (!left->dispatched && !right->dispatched &&
+                left->is_read == right->is_read) {
                 int merged = left->merge_from(*right);
                 if (merged > 0)
                     DPRINTF(IntTRB,
@@ -198,7 +203,8 @@ IntTRB::defragment_from_queue()
         auto left = queue.begin();
         auto right = std::next(left);
         while (right != queue.end()) {
-            if (!left->dispatched &&
+            panic_if(left == right, "somethings not right lol\n");
+            if (!left->dispatched && !right->dispatched &&
                 left->nodes.size() + right->nodes.size() <= tree_height &&
                 left->is_read == right->is_read) {
                 stats.defragmentedRequests++;
@@ -212,9 +218,9 @@ IntTRB::defragment_from_queue()
                     left->nodes.emplace_back(req);
                 right = queue.erase(right);
             } else {
+                left++;
                 right++;
             }
-            left++;
         }
     }
 }
@@ -228,7 +234,44 @@ IntTRB::dispatch_from_queue()
         merge_from_queue();
     if (defragment_requests)
         defragment_from_queue();
-    if (par_dispatch) {
+    if (sim_dispatch) {
+        DPRINTF(IntTRB, "similar dispatch initiated\n");
+        // select request to be dispatched in terms of similarity to previously
+        // dispatched request
+        std::list<IntTreeReq>::iterator candidate;
+        do {
+            candidate = queue.end();
+            uint32_t min_counters = UINT32_MAX;
+            uint64_t min_similarity = UINT64_MAX;
+            for (auto it = queue.begin(); it != queue.end(); it++) {
+                // disallow scheduling multiple requests except if par
+                // dispatch is set
+                if (it->dispatched) {
+                    if (par_dispatch)
+                        continue;
+                    else
+                        return;
+                }
+                uint32_t counters = it->count_counter_nodes();
+                uint64_t similarity = lrd.compute_similarity(*it);
+                // 1st: optimize for amount of counters in node
+                // 2nd: optimize for similarity
+                if (counters < min_counters ||
+                    (counters <= min_counters &&
+                        similarity < min_similarity)) {
+                    min_counters = counters;
+                    min_similarity = similarity;
+                    candidate = it;
+                }
+            }
+            if (candidate != queue.end()) {
+                DPRINTF(IntTRB, "dispatch %s (counters=%d, similarity=%d)\n",
+                    candidate->to_string(), min_counters, min_similarity);
+                lrd = *candidate;
+                dispatch_request(*candidate);
+            }
+        } while (par_dispatch && candidate != queue.end());
+    } else if (par_dispatch) {
         // barrier-based parallel dispatch:
         // write requests serve as natural barrier that serialize dispatches
         // thus we dispatch all reads requests

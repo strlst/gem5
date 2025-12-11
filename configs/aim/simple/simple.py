@@ -188,7 +188,13 @@ def add_custom_args(parser):
     parser.add_argument(
         "--int-parallel-dispatch",
         action=argparse.BooleanOptionalAction,
-        help="Whether to apply more advanced dispatch logic for integrity "
+        help="Whether to apply parallel dispatch logic for integrity "
+        "tree requests (default=False)",
+    )
+    parser.add_argument(
+        "--int-similar-dispatch",
+        action=argparse.BooleanOptionalAction,
+        help="Whether to apply similar dispatch logic for integrity "
         "tree requests (default=False)",
     )
 
