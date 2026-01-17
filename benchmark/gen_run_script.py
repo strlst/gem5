@@ -89,8 +89,25 @@ def generate_configurations():
     yield from configurations
 
 
-def print_configurations(table=False):
-    if table:
+def print_configurations(selected, table=False, latex=False):
+    if selected:
+        selected = selected.split(",")
+    if latex:
+        matrix = []
+        keys = []
+        for i, conf in enumerate(generate_configurations()):
+            if selected and conf["profile"] not in selected:
+                continue
+            if i == 0:
+                keys = [key for key in conf]
+            matrix.append([conf["profile"]] + [conf[key] for key in conf])
+        y = -1
+        for x in range(len(keys)):
+            print(keys[x], end=" & ")
+            for y in range(len(matrix) - 1):
+                print(matrix[y][x], end=" & ")
+            print(f"{matrix[y + 1][x]} \\\\")
+    elif table:
         for i, conf in enumerate(generate_configurations()):
             if i == 0:
                 print(";".join(key for key in conf))
@@ -103,11 +120,13 @@ def print_configurations(table=False):
 
 def main(args):
     if args.list_configurations:
-        print_configurations()
+        print_configurations(args.filter)
         return
-
-    if args.show_configuration_table:
-        print_configurations(table=True)
+    elif args.show_configuration_table:
+        print_configurations(args.filter, table=True)
+        return
+    elif args.show_configuration_latex_table:
+        print_configurations(args.filter, latex=True)
         return
 
     print("note: this script is meant to be run in the gem5 root folder")
@@ -226,10 +245,21 @@ if __name__ == "__main__":
         help="Output file path to write resulting shell script to",
     )
     parser.add_argument(
+        "-f",
+        "--filter",
+        help="Filter architectures by name (comma-separated, e.g. no_memsec,memsec_basic)",
+    )
+    parser.add_argument(
         "-t",
         "--show-configuration-table",
         action=argparse.BooleanOptionalAction,
         help="Show a table of all configurations only",
+    )
+    parser.add_argument(
+        "-T",
+        "--show-configuration-latex-table",
+        action=argparse.BooleanOptionalAction,
+        help="Show a latex table of all configurations only",
     )
     parser.add_argument(
         "-l",

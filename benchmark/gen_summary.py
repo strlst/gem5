@@ -48,7 +48,8 @@ gem5_fields = {
     "system.l2cache.overallMissRate::total",
     "system.l2cache.overallAvgMissLatency::total",
     # "system.l2cache.replacements",
-    # "system.metadata_cache.overallMisses::total",
+    "system.metadata_cache.overallHits::total",
+    "system.metadata_cache.overallMisses::total",
     "system.metadata_cache.overallMissRate::total",
     # "system.metadata_cache.overallAvgMissLatency::total",
     "system.metadata_cache.replacements",
@@ -292,9 +293,7 @@ def plot_accesses(data, title, plots_path):
     plt.xlabel("Benchmark")
     plt.ylabel(f"Integrity Tree Memory Traffic {title} [\\%]")
     plt.title(f"{title} of different configurations across benchmarks")
-    plt.legend(
-        title="Configuration", bbox_to_anchor=(1.05, 1), loc="upper left"
-    )
+    plt.legend(title="Configuration", loc="upper left")
     plt.tight_layout()
 
     lower_title = title.lower()
@@ -341,9 +340,7 @@ def plot_stat_line(df, stat, title, simulator, plots_path):
     plt.ylabel(stat)
     # plt.title(f'{stat} per benchmark for each configuration')
     plt.title(title)
-    plt.legend(
-        title="Configuration", bbox_to_anchor=(1.02, 1), loc="upper left"
-    )
+    plt.legend(title="Configuration", loc="upper left")
     plt.tight_layout()
 
     filename = os.path.join(plots_path, f"{simulator}-{stat}.png")
@@ -364,9 +361,7 @@ def plot_stat_bar(df, stat, title, simulator, plots_path):
     )
     plt.figure(figsize=(12, 8))
     ax = sns.barplot(x="benchmark", y=stat, data=df, hue="configuration")
-    plt.legend(
-        title="Configuration", bbox_to_anchor=(1.02, 1), loc="upper left"
-    )
+    plt.legend(title="Configuration", loc="upper left")
     ax.set_title(title)
     plt.xticks(rotation=30, ha="right")
     plt.tight_layout()

@@ -203,7 +203,10 @@ IntTRB::defragment_from_queue()
         auto left = queue.begin();
         auto right = std::next(left);
         while (right != queue.end()) {
-            panic_if(left == right, "somethings not right lol\n");
+            panic_if(
+                left == right,
+                "pair comparison iterators cannot point to the same element\n"
+            );
             if (!left->dispatched && !right->dispatched &&
                 left->nodes.size() + right->nodes.size() <= tree_height &&
                 left->is_read == right->is_read) {

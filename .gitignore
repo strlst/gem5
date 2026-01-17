@@ -60,3 +60,4 @@ oldplots
 plots_buffered
 plots_delay
 plots_general
+plots_pre_optimization

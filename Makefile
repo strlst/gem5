@@ -12,11 +12,12 @@ GEM5_CONFIG_SPEC:=--maxinsts 1000000
 GEM5_CONFIG_FULL:=configs/aim/full.py --num-cores=1 --ooo --$(MEMSEC)
 GEM5_CONFIG_CACHE:=--l1i-size=1KiB --l1d-size=1KiB --l2-size=2KiB --no-l3
 GEM5_CONFIG_AIM_SHAPE:=--aim-counter-bits=56 --aim-mac-bits=64 --aim-packing-factor=8 --aim-aes-block-bits=128
-GEM5_CONFIG_AIM_PERF:=--aim-aes-units=1 --aim-aes-enc-cycles=80 --aim-aes-dec-cycles=80 --aim-aes-enc-ii=20 --aim-aes-dec-ii=20 --aim-mac-units=1 --aim-mac-cycles=40 --aim-mac-ii=10 --metadata-cache-size=1024KiB --metadata-cache-assoc=8 --int-trb-size=1 --no-int-merge-req --no-int-defrag-req --no-int-parallel-dispatch --no-int-similar-dispatch
+GEM5_CONFIG_AIM_PERF:=--aim-aes-units=1 --aim-aes-enc-cycles=80 --aim-aes-dec-cycles=80 --aim-aes-enc-ii=20 --aim-aes-dec-ii=20 --aim-mac-units=1 --aim-mac-cycles=40 --aim-mac-ii=10 --metadata-cache-size=1KiB --metadata-cache-assoc=8 --int-trb-size=1 --no-int-merge-req --no-int-defrag-req --no-int-parallel-dispatch --no-int-similar-dispatch
 
 # running flags
 # binary is used for bare metal tests
 BINARY:=tests/test-progs/matmul/bin/riscv/linux/matmul
+#BINARY:=tests/test-progs/memscan/bin/riscv/linux/memscan
 #DEBUG_FLAGS:=AIMCtrl,IntTRB,MACUnit,AESUnit,Vma,SyscallVerbose,DRAMsim3,Cache#,O3CPUAll
 DEBUG_FLAGS:=AIMCtrl,IntTRB,MACUnit,AESUnit
 
@@ -91,6 +92,7 @@ summary:
 
 detailed-summary:
 	python3 benchmark/gen_summary.py -f memsec_none,memsec_full,memsec_basic -p plots_general
+	python3 benchmark/gen_summary.py -f memsec_none,memsec_no_delay,memsec_basic -p plots_pre_optimization
 	python3 benchmark/gen_summary.py -f memsec_basic,memsec_buff,memsec_merge,memsec_defrag,memsec_similar -p plots_buffered
 	python3 benchmark/gen_summary.py -f memsec_none,memsec_basic,memsec_no_delay,memsec_aes_units -p plots_delay
 
