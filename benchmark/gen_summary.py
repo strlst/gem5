@@ -418,7 +418,11 @@ def main(args):
 
     if args.filter:
         whitelist = args.filter.split(",")
-        print(whitelist)
+        # remove color mappings that are not contained in the whitelist
+        unused = [key for key in color_mapping.keys() if key not in whitelist]
+        for key in unused:
+            del color_mapping[key]
+        # print(whitelist)
 
     for root, dirs, files in os.walk("result"):
         # only include paths with results
