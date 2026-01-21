@@ -8,7 +8,7 @@ GEM5_CONFIG:=configs/aim/simple/simple.py --num-cores=1 --ooo --$(MEMSEC)
 # this is only needed for dynamically linked executables requiring an
 # interpreter
 GEM5_CONFIG_SE:=--interp-dir benchmark/sysroot --redirects /lib=benchmark/sysroot/lib --redirects /lib64=benchmark/sysroot/lib64 --redirects /usr/lib=benchmark/sysroot/usr/lib --redirects /usr/lib64=benchmark/sysroot/usr/lib64
-GEM5_CONFIG_SPEC:=--maxinsts 1000000
+GEM5_CONFIG_SPEC:=--maxinsts 2000000
 GEM5_CONFIG_FULL:=configs/aim/full.py --num-cores=1 --ooo --$(MEMSEC)
 GEM5_CONFIG_CACHE:=--l1i-size=1KiB --l1d-size=1KiB --l2-size=2KiB --no-l3
 GEM5_CONFIG_AIM_SHAPE:=--aim-counter-bits=56 --aim-mac-bits=64 --aim-packing-factor=8 --aim-aes-block-bits=128
@@ -113,7 +113,6 @@ tidy:
 	rm -rf result plots run-spec-benchmarks.sh
 
 clean:
-	@echo -n "Are you sure? [y/N] " && read ans && if [ $${ans:-'N'} = 'y' ]; then make clean; fi
-
+	@echo -n "Are you sure? [y/N] " && read ans && if [ $${ans:-'N'} = 'y' ]; then make force-clean; fi
 
 .PHONY: run linux build debug build build-dev remote-run remote-debug remote-build test-stream clean

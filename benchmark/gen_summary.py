@@ -80,6 +80,20 @@ gem5_fields = {
     "system.mem_ctrl.bwTotal::total",
 }
 
+color_mapping = {
+    "memsec_none": "#f94144",
+    "memsec_basic": "#f3722c",
+    "memsec_big_mdcache": "#f8961e",
+    "memsec_buff": "#f9844a",
+    "memsec_big_buff": "#f9c74f",
+    "memsec_merge": "#90be6d",
+    "memsec_defrag": "#43aa8b",
+    "memsec_similar": "#4d908e",
+    "memsec_no_delay": "#577590",
+    "memsec_aes_units": "#277da1",
+    "memsec_full": "#0466c8",
+}
+
 
 def check_fields(line, fields):
     for field in fields:
@@ -360,7 +374,14 @@ def plot_stat_bar(df, stat, title, simulator, plots_path):
         }
     )
     plt.figure(figsize=(12, 8))
-    ax = sns.barplot(x="benchmark", y=stat, data=df, hue="configuration")
+    ax = sns.barplot(
+        x="benchmark",
+        y=stat,
+        data=df,
+        hue="configuration",
+        palette=color_mapping,
+        hue_order=color_mapping.keys(),
+    )
     plt.legend(title="Configuration", loc="upper left")
     ax.set_title(title)
     plt.xticks(rotation=30, ha="right")

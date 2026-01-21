@@ -258,7 +258,7 @@ IntTRB::dispatch_from_queue()
                 uint32_t counters = it->count_counter_nodes();
                 uint64_t similarity = lrd.compute_similarity(*it);
                 // 1st: optimize for amount of counters in node
-                // 2nd: optimize for similarity
+                // 2nd: if the same, optimize for similarity
                 if (counters < min_counters ||
                     (counters <= min_counters &&
                         similarity < min_similarity)) {

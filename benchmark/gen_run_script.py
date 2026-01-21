@@ -89,7 +89,7 @@ def generate_configurations():
     yield from configurations
 
 
-def print_configurations(selected, table=False, latex=False):
+def print_configurations(selected=None, table=False, latex=False):
     if selected:
         selected = selected.split(",")
     if latex:
@@ -100,7 +100,7 @@ def print_configurations(selected, table=False, latex=False):
                 continue
             if i == 0:
                 keys = [key for key in conf]
-            matrix.append([conf["profile"]] + [conf[key] for key in conf])
+            matrix.append([conf[key] for key in conf])
         y = -1
         for x in range(len(keys)):
             print(keys[x], end=" & ")

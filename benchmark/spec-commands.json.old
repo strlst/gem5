@@ -4,16 +4,28 @@
         "503.bwaves_r": {
             "command": "503.bwaves_r/exe/bwaves_r_base.mytest-m64",
             "runs": [
-                "bwaves_1"
+                "bwaves_1",
+                "bwaves_2",
+                "bwaves_3",
+                "bwaves_4"
             ],
             "stdins": [
-                "benchmark/503.bwaves_r/bwaves_1.in"
+                "benchmark/503.bwaves_r/bwaves_1.in",
+                "benchmark/503.bwaves_r/bwaves_2.in",
+                "benchmark/503.bwaves_r/bwaves_3.in",
+                "benchmark/503.bwaves_r/bwaves_4.in"
             ],
             "stdouts": [
-                "bwaves_1.out"
+                "bwaves_1.out",
+                "bwaves_2.out",
+                "bwaves_3.out",
+                "bwaves_4.out"
             ],
             "stderrs": [
-                "bwaves_1.err"
+                "bwaves_1.err",
+                "bwaves_2.err",
+                "bwaves_3.err",
+                "bwaves_4.err"
             ]
         },
         "507.cactuBSSN_r": {
@@ -44,6 +56,21 @@
             ],
             "stderrs": [
                 "namd.err"
+            ]
+        },
+        "511.povray_r": {
+            "command": "511.povray_r/exe/povray_r_base.mytest-m64",
+            "runs": [
+                "benchmark/511.povray_r/SPEC-benchmark-ref.ini"
+            ],
+            "stdins": [
+                ""
+            ],
+            "stdouts": [
+                "SPEC-benchmark-ref.stdout"
+            ],
+            "stderrs": [
+                "SPEC-benchmark-ref.stderr"
             ]
         },
         "519.lbm_r": {
@@ -139,7 +166,10 @@
         "502.gcc_r": {
             "command": "502.gcc_r/exe/cpugcc_r_base.mytest-m64",
             "runs": [
-                "benchmark/502.gcc_r/gcc-pp.c -O3 -finline-limit=0 -fif-conversion -fif-conversion2 -o benchmark/502.gcc_r/gcc-pp.opts-O3_-finline-limit_0_-fif-conversion_-fif-conversion2.s"
+                "benchmark/502.gcc_r/gcc-pp.c -O3 -finline-limit=0 -fif-conversion -fif-conversion2 -o benchmark/502.gcc_r/gcc-pp.opts-O3_-finline-limit_0_-fif-conversion_-fif-conversion2.s",
+                "benchmark/502.gcc_r/gcc-pp.c -O2 -finline-limit=36000 -fpic -o benchmark/502.gcc_r/gcc-pp.opts-O2_-finline-limit_36000_-fpic.s",
+                "benchmark/502.gcc_r/gcc-smaller.c -O3 -fipa-pta -o benchmark/502.gcc_r/gcc-smaller.opts-O3_-fipa-pta.s",
+                "benchmark/502.gcc_r/ref32.c -O5 -o benchmark/502.gcc_r/ref32.opts-O5.s"
             ],
             "stdins": [
                 "",
@@ -148,10 +178,16 @@
                 ""
             ],
             "stdouts": [
-                "gcc-pp.opts-O3_-finline-limit_0_-fif-conversion_-fif-conversion2.out"
+                "gcc-pp.opts-O3_-finline-limit_0_-fif-conversion_-fif-conversion2.out",
+                "gcc-pp.opts-O2_-finline-limit_36000_-fpic.out",
+                "gcc-smaller.opts-O3_-fipa-pta.out",
+                "ref32.opts-O5.out"
             ],
             "stderrs": [
-                "gcc-pp.opts-O3_-finline-limit_0_-fif-conversion_-fif-conversion2.err"
+                "gcc-pp.opts-O3_-finline-limit_0_-fif-conversion_-fif-conversion2.err",
+                "gcc-pp.opts-O2_-finline-limit_36000_-fpic.err",
+                "gcc-smaller.opts-O3_-fipa-pta.err",
+                "ref32.opts-O5.err"
             ]
         },
         "505.mcf_r": {
@@ -232,16 +268,24 @@
         "557.xz_r": {
             "command": "557.xz_r/exe/xz_r_base.mytest-m64",
             "runs": [
-                "benchmark/557.xz_r/cld.tar.xz 160 19cf30ae51eddcbefda78dd06014b4b96281456e078ca7c13e1c0c9e6aaea8dff3efb4ad6b0456697718cede6bd5454852652806a657bb56e07d61128434b474 59796407 61004416 6"
+                "benchmark/557.xz_r/cld.tar.xz 160 19cf30ae51eddcbefda78dd06014b4b96281456e078ca7c13e1c0c9e6aaea8dff3efb4ad6b0456697718cede6bd5454852652806a657bb56e07d61128434b474 59796407 61004416 6",
+                "benchmark/557.xz_r/cpu2006docs.tar.xz 250 055ce243071129412e9dd0b3b69a21654033a9b723d874b2015c774fac1553d9713be561ca86f74e4f16f22e664fc17a79f30caa5ad2c04fbc447549c2810fae 23047774 23513385 6e",
+                "benchmark/557.xz_r/input.combined.xz 250 a841f68f38572a49d86226b7ff5baeb31bd19dc637a922a972b2e6d1257a890f6a544ecab967c313e370478c74f760eb229d4eef8a8d2836d233d3e9dd1430bf 40401484 41217675 7"
             ],
             "stdins": [
+                "",
+                "",
                 ""
             ],
             "stdouts": [
-                "cld.tar-160-6.out"
+                "cld.tar-160-6.out",
+                "cpu2006docs.tar-250-6e.out",
+                "input.combined-250-7.out"
             ],
             "stderrs": [
-                "cld.tar-160-6.err"
+                "cld.tar-160-6.err",
+                "cpu2006docs.tar-250-6e.err",
+                "input.combined-250-7.err"
             ]
         },
         "999.specrand_ir": {
