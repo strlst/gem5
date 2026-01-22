@@ -209,6 +209,7 @@ def analyze_accesses(args, accesses):
     #   region(k)=[0, 0x17ff]
     # against region
     #   region(l)=[0x1800, 0x1fff]
+    # and count how many accesses fall into region(k) or region(l)
     # NOTE: overhead(k, l) is defined as (k + l) / k
     imbalances = dict()
     overheads = dict()
@@ -285,24 +286,17 @@ def plot_accesses(data, title, plots_path):
             id_vars="benchmark", var_name="configuration", value_name="value"
         )
     )
-    df["benchmark"] = pd.Categorical(
-        df["benchmark"], categories=list(data.keys()), ordered=True
-    )
 
     plt.figure(figsize=(12, 8))
-    ax = sns.lineplot(
+    ax = sns.barplot(
         data=df,
         x="benchmark",
         y="value",
         hue="configuration",
-        marker="o",
-        estimator=None,
-        sort=False,
+        palette=color_mapping,
+        hue_order=color_mapping.keys(),
     )
-    for line in ax.lines:
-        line.set_linestyle("--")
-        line.set_linewidth(1.5)
-    # plt.ylim(0, 100)
+    plt.ylim(100, 250)
     plt.xticks(rotation=30, ha="right")
     plt.xlabel("Benchmark")
     plt.ylabel(f"Integrity Tree Memory Traffic {title} [\\%]")
@@ -466,7 +460,7 @@ def main(args):
             )
 
         # extra schedule/overhead analysis
-        if not args.skip_imbalance and "dramsim3.schedule.txt" in files:
+        if not args.skip_overhead and "dramsim3.schedule.txt" in files:
             bin_schedule(
                 accesses[root],
                 os.path.join(root, "dramsim3.schedule.txt"),
@@ -478,7 +472,7 @@ def main(args):
     if not args.skip_statistics:
         summarize_statistics(args, statistics)
 
-    if not args.skip_imbalance:
+    if not args.skip_overhead:
         analyze_accesses(args, accesses)
 
 
@@ -503,9 +497,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-i",
-        "--skip-imbalance",
+        "--skip-overhead",
         action=argparse.BooleanOptionalAction,
-        help="Run only imbalance analysis on dramsim3 schedule files",
+        help="Run only overhead analysis on dramsim3 schedule files",
     )
     parser.add_argument(
         "-l",
