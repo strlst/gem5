@@ -3,10 +3,20 @@ import argparse
 import os
 import re
 import sys
+import warnings
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
+from scipy import stats
+
+# seaborn causes a barrage of warnings to be printed
+warnings.filterwarnings(
+    "ignore",
+    category=FutureWarning,
+    module="seaborn",
+)
 
 aim_overhead_binmask = 0xFFFFE0000000
 
@@ -84,8 +94,9 @@ color_mapping = {
     "memsec_none": "#f94144",
     "memsec_basic": "#f3722c",
     "memsec_big_mdcache": "#f8961e",
-    "memsec_buff": "#f9844a",
-    "memsec_big_buff": "#f9c74f",
+    # "memsec_buff": "#f9844a",
+    # "memsec_big_buff": "#f9c74f",
+    "memsec_buff": "#f9c74f",
     "memsec_merge": "#90be6d",
     "memsec_defrag": "#43aa8b",
     "memsec_similar": "#4d908e",
@@ -93,6 +104,9 @@ color_mapping = {
     "memsec_aes_units": "#277da1",
     "memsec_full": "#0466c8",
 }
+
+# baseline can be set for geomean plots
+baseline_config = "memsec_basic"
 
 
 def check_fields(line, fields):
@@ -178,17 +192,39 @@ def summarize_statistics(args, statistics):
     os.makedirs(args.plots_path, exist_ok=True)
     print(f'created folder "{args.plots_path}"')
 
+    # configure plots
+    sns.set_theme(style="whitegrid")
+    plt.rcParams.update(
+        {
+            "text.usetex": True,
+            "font.family": "sans-serif",
+            "font.size": "26",
+        }
+    )
+
     df_gem5 = prepare_df(pd.DataFrame(data["by-gem5"]))
     for stat in gem5_fields:
         plot_stat_bar(
             df_gem5, stat, descriptions[stat], "gem5", args.plots_path
         )
+        if args.geomean:
+            plot_stat_geomean(
+                df_gem5, stat, descriptions[stat], "gem5", args.plots_path
+            )
         # plot_stat_line(df_gem5, stat, descriptions[stat], "gem5", args.plots_path)
     df_dramsim3 = prepare_df(pd.DataFrame(data["by-dramsim3"]["channel0"]))
     for stat in dramsim3_fields:
         plot_stat_bar(
             df_dramsim3, stat, descriptions[stat], "dramsim3", args.plots_path
         )
+        if args.geomean:
+            plot_stat_geomean(
+                df_dramsim3,
+                stat,
+                descriptions[stat],
+                "dramsim3",
+                args.plots_path,
+            )
         # plot_stat_line(df_dramsim3, stat, descriptions[stat], "dramsim3", args.plots_path)
 
 
@@ -269,15 +305,6 @@ def prepare_df(df):
 
 
 def plot_accesses(data, title, plots_path):
-    sns.set(style="whitegrid")
-    plt.rcParams.update(
-        {
-            "text.usetex": True,
-            "font.family": "sans-serif",
-            "font.size": "26",
-        }
-    )
-
     df = (
         pd.DataFrame.from_dict(data, orient="index")
         .reset_index()
@@ -289,7 +316,7 @@ def plot_accesses(data, title, plots_path):
 
     plt.figure(figsize=(12, 8))
     ax = sns.barplot(
-        data=df,
+        data=df.copy(),
         x="benchmark",
         y="value",
         hue="configuration",
@@ -313,15 +340,6 @@ def plot_accesses(data, title, plots_path):
 
 
 def plot_stat_line(df, stat, title, simulator, plots_path):
-    sns.set(style="whitegrid")
-    plt.rcParams.update(
-        {
-            "text.usetex": True,
-            "font.family": "sans-serif",
-            "font.size": "26",
-        }
-    )
-
     # order x-axis by mean of stat (introduces non-consistent)
     # benchmark order!
     agg = df.groupby("benchmark")[stat].mean()
@@ -332,7 +350,7 @@ def plot_stat_line(df, stat, title, simulator, plots_path):
 
     plt.figure(figsize=(12, 8))
     ax = sns.lineplot(
-        data=df,
+        data=df.copy(),
         x="benchmark",
         y=stat,
         hue="configuration",
@@ -359,19 +377,11 @@ def plot_stat_line(df, stat, title, simulator, plots_path):
 
 
 def plot_stat_bar(df, stat, title, simulator, plots_path):
-    sns.set(style="whitegrid")
-    plt.rcParams.update(
-        {
-            "text.usetex": True,
-            "font.family": "sans-serif",
-            "font.size": "26",
-        }
-    )
     plt.figure(figsize=(12, 8))
     ax = sns.barplot(
         x="benchmark",
         y=stat,
-        data=df,
+        data=df.copy(),
         hue="configuration",
         palette=color_mapping,
         hue_order=color_mapping.keys(),
@@ -385,6 +395,64 @@ def plot_stat_bar(df, stat, title, simulator, plots_path):
     plt.savefig(filename, dpi=300, bbox_inches="tight")
     print(f"saved figure {simulator}-{stat} to file {filename}")
 
+    plt.close()
+
+
+def plot_stat_geomean(df, stat, title, simulator, plots_path):
+    if stat not in df.columns:
+        print(f"skipping geomean plot for {stat}: not in dataframe")
+        return
+
+    # normalize each benchmark's value to the baseline configuration
+    df_pivot = df.pivot(
+        index="benchmark", columns="configuration", values=stat
+    )
+    if baseline_config not in df_pivot.columns:
+        print(
+            f"skipping geomean plot for {stat}: baseline '{baseline_config}' not found"
+        )
+        return
+
+    df_norm = df_pivot.div(df_pivot[baseline_config], axis=0)
+
+    configs = [c for c in color_mapping.keys() if c in df_norm.columns]
+    geomeans = [stats.gmean(df_norm[c].dropna()) for c in configs]
+    colors = [color_mapping[c] for c in configs]
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    x = np.arange(len(configs))
+    bars = ax.bar(x, geomeans, color=colors, zorder=2)
+
+    # overlay individual benchmark values as scatter dots
+    for i, cfg in enumerate(configs):
+        vals = df_norm[cfg].dropna().values
+        ax.scatter(
+            np.full(len(vals), i),
+            vals,
+            color="black",
+            s=20,
+            alpha=0.6,
+            zorder=3,
+        )
+
+    ax.axhline(1.0, color="black", linewidth=0.8, linestyle="--", zorder=1)
+    ax.set_xticks(x)
+    ax.set_xticklabels(
+        [c.replace("memsec_", "") for c in configs],
+        rotation=30,
+        ha="right",
+    )
+    ax.set_ylabel(
+        f"Normalized to {baseline_config.replace('memsec_', '')} (geomean + per-benchmark)"
+    )
+    ax.set_title(title)
+    plt.tight_layout()
+
+    prefix = f"{simulator}-geo-{stat}"
+    filename = os.path.join(plots_path, f"{prefix}.png")
+    plt.savefig(filename, dpi=300, bbox_inches="tight")
+    print(f"saved figure {prefix} to file {filename}")
     plt.close()
 
 
@@ -500,6 +568,12 @@ if __name__ == "__main__":
         "--skip-overhead",
         action=argparse.BooleanOptionalAction,
         help="Run only overhead analysis on dramsim3 schedule files",
+    )
+    parser.add_argument(
+        "-g",
+        "--geomean",
+        action=argparse.BooleanOptionalAction,
+        help="Also generate geomean+scatter plots for gem5 metrics, normalized to the 'basic' configuration",
     )
     parser.add_argument(
         "-l",

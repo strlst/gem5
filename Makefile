@@ -96,6 +96,13 @@ detailed-summary:
 	python3 benchmark/gen_summary.py -f memsec_basic,memsec_buff,memsec_merge,memsec_defrag,memsec_similar -p plots_buffered
 	python3 benchmark/gen_summary.py -f memsec_none,memsec_basic,memsec_no_delay,memsec_aes_units -p plots_delay
 
+micro-summary:
+	python3 benchmark/gen_summary.py -f memsec_none,memsec_basic,memsec_big_mdcache,memsec_buff,memsec_merge,memseg_defrag,memsec_similar,memsec_no_delay,memsec_aes_units,memsec_full -p plots -g
+	python3 benchmark/gen_summary.py -f memsec_none,memsec_full,memsec_basic -p plots_general -g
+	python3 benchmark/gen_summary.py -f memsec_none,memsec_no_delay,memsec_basic -p plots_pre_optimization -g
+	python3 benchmark/gen_summary.py -f memsec_basic,memsec_buff,memsec_merge,memsec_defrag,memsec_similar -p plots_buffered -g
+	python3 benchmark/gen_summary.py -f memsec_none,memsec_basic,memsec_no_delay,memsec_aes_units -p plots_delay -g
+
 summaries: summary detailed-summary
 
 measure-int-trb-latencies:
