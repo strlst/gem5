@@ -447,6 +447,9 @@ def plot_stat_geomean(df, stat, title, simulator, plots_path):
         f"Normalized to {baseline_config.replace('memsec_', '')} (geomean + per-benchmark)"
     )
     ax.set_title(title)
+
+    all_vals = np.concatenate([df_norm[c].dropna().values for c in configs])
+    ax.set_ylim(all_vals.min() * 0.95)
     plt.tight_layout()
 
     prefix = f"{simulator}-geo-{stat}"
