@@ -97,6 +97,7 @@ color_mapping = {
     # "memsec_buff": "#f9844a",
     # "memsec_big_buff": "#f9c74f",
     "memsec_buff": "#f9c74f",
+    # "memsec_big_buff": "#d14ff9",
     "memsec_merge": "#90be6d",
     "memsec_defrag": "#43aa8b",
     "memsec_similar": "#4d908e",
@@ -112,8 +113,8 @@ baseline_config = "memsec_basic"
 def check_fields(line, fields):
     for field in fields:
         if line.startswith(field):
+            # print(f"line {line} starts with {field}")
             return True
-            print(f"line {line} starts with {field}")
     return False
 
 
@@ -196,9 +197,9 @@ def summarize_statistics(args, statistics):
     sns.set_theme(style="whitegrid")
     plt.rcParams.update(
         {
-            "text.usetex": True,
+            # "text.usetex": True,
             "font.family": "sans-serif",
-            "font.size": "26",
+            "font.size": args.font_size,
         }
     )
 
@@ -444,7 +445,7 @@ def plot_stat_geomean(df, stat, title, simulator, plots_path):
         ha="right",
     )
     ax.set_ylabel(
-        f"Normalized to {baseline_config.replace('memsec_', '')} (geomean + per-benchmark)"
+        f"Normalized to {baseline_config.replace('memsec_', '')} (geomean)"
     )
     ax.set_title(title)
 
@@ -588,6 +589,12 @@ if __name__ == "__main__":
         "-f",
         "--filter",
         help="Filter architectures by name (comma-separated, e.g. no_memsec,memsec_basic)",
+    )
+    parser.add_argument(
+        "--font-size",
+        type=int,
+        default=26,
+        help="Set figure font size",
     )
     parser.add_argument(
         "-d",
